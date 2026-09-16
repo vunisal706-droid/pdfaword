@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>PDF a Markdown y Word</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --color-primary:#2563eb;--color-primary-light:#dbeafe;--color-primary-dark:#1d4ed8;
+  --color-bg:#ffffff;--color-surface:#f8fafc;--color-border:#e2e8f0;
+  --color-text:#1e293b;--color-text-muted:#64748b;
+  --color-success:#16a34a;--color-success-bg:#dcfce7;--color-error:#dc2626;--color-error-bg:#fee2e2;
+  --color-warning:#d97706;--color-warning-bg:#fef3c7;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:var(--color-text);
+  background:radial-gradient(ellipse at 0% 0%,rgba(37,99,235,.10),transparent 60%),radial-gradient(ellipse at 100% 0%,rgba(124,58,237,.08),transparent 60%),var(--color-bg);min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 18px 60px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+header img{width:48px;height:48px;border-radius:12px}
+h1{font-size:clamp(1.5rem,4vw,2.2rem);margin:0;font-weight:800}
+header p{margin:2px 0 0;color:var(--color-text-muted)}
+.drop{border:2px dashed #93c5fd;background:rgba(255,255,255,.8);border-radius:20px;padding:36px 20px;text-align:center;cursor:pointer;transition:.2s}
+.drop:hover,.drop.over{background:var(--color-primary-light);border-color:var(--color-primary)}
+.drop strong{display:block;font-size:1.15rem;margin:8px 0 4px}
+.drop span{color:var(--color-text-muted)}
+.opts{display:flex;flex-wrap:wrap;gap:10px 22px;margin:16px 4px}
+.opts label{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:44px}
+.opts input{width:20px;height:20px;accent-color:var(--color-primary)}
+.status{display:none;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;margin:10px 0;font-weight:600}
+.status.show{display:flex}
+.status.info{background:var(--color-primary-light);color:var(--color-primary-dark)}
+.status.ok{background:var(--color-success-bg);color:#166534}
+.status.err{background:var(--color-error-bg);color:#991b1b}
+.status.warn{background:var(--color-warning-bg);color:#92400e}
+.bar{flex:1;height:8px;background:#fff;border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--color-primary);transition:width .2s}
+.result{display:none;margin-top:14px}
+.result.show{display:block}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.tabs{display:flex;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:4px;margin-right:auto}
+.tab{border:0;background:none;padding:10px 16px;border-radius:9px;font:inherit;font-weight:600;color:var(--color-text-muted);cursor:pointer;min-height:44px}
+.tab[aria-selected=true]{background:#fff;color:var(--color-primary);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.btn{border:0;border-radius:12px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer;min-height:44px;background:var(--color-primary);color:#fff;transition:transform .1s,background .15s}
+.btn:hover{background:var(--color-primary-dark)}
+.btn.sec{background:#fff;color:var(--color-primary);border:1.5px solid var(--color-primary)}
+.btn.sec:hover{background:var(--color-primary-light)}
+.btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--color-primary);outline-offset:3px}
+.panel{background:#fff;border:1px solid var(--color-border);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.05);overflow:hidden}
+textarea{width:100%;min-height:60vh;border:0;padding:20px;font:14px/1.6 'JetBrains Mono',ui-monospace,monospace;color:var(--color-text);resize:vertical}
+textarea:focus{outline:none}
+.preview{padding:24px 30px;min-height:60vh;line-height:1.65;overflow-x:auto}
+.preview h1,.preview h2,.preview h3{line-height:1.25}
+.preview table{border-collapse:collapse}.preview td,.preview th{border:1px solid var(--color-border);padding:6px 10px}
+.meta{color:var(--color-text-muted);font-size:.9rem;margin-top:8px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);background:#fff;color:#166534;border:2px solid var(--color-success);padding:12px 20px;border-radius:12px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.12);transition:transform .25s}
+.toast.show{transform:translateX(-50%) translateY(0)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="icon-192.png" width="48" height="48" alt="">
+    <div><h1>PDF a Markdown y Word</h1><p>Convierte tus PDF en Markdown o Word. Todo se procesa en tu dispositivo.</p></div>
+  </header>
+
+  <div class="drop" id="drop" role="button" tabindex="0" aria-label="Seleccionar archivo PDF">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg>
+    <strong>Arrastra aquí un PDF o pulsa para elegirlo</strong>
+    <span>Funciona con PDF de texto (no escaneados)</span>
+    <input type="file" id="file" accept="application/pdf,.pdf" hidden>
+  </div>
+
+  <div class="opts">
+    <label for="optHF"><input type="checkbox" id="optHF" checked> Quitar encabezados y pies repetidos</label>
+    <label for="optPages"><input type="checkbox" id="optPages"> Separar páginas con ---</label>
+    <label for="optHead"><input type="checkbox" id="optHead" checked> Detectar títulos</label>
+  </div>
+
+  <div class="status" id="status" role="status" aria-live="polite"><span id="statusText"></span><div class="bar" id="bar" hidden><i id="barFill"></i></div></div>
+
+  <section class="result" id="result">
+    <div class="toolbar">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" id="tabMd">Markdown</button>
+        <button class="tab" role="tab" aria-selected="false" id="tabPrev">Vista previa</button>
+      </div>
+      <button class="btn sec" id="btnCopy">Copiar</button>
+      <button class="btn sec" id="btnDown">Descargar .md</button>
+      <button class="btn" id="btnDocx">Descargar Word</button>
+    </div>
+    <div class="panel">
+      <textarea id="out" aria-label="Resultado en Markdown (editable)" spellcheck="false"></textarea>
+      <div class="preview" id="preview" hidden></div>
+    </div>
+    <div class="meta" id="meta"></div>
+  </section>
+</div>
+<div class="toast" id="toast" role="alert"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $ = id => document.getElementById(id);
+let fileName = 'documento';
+let lastBuffer = null;
+
+const drop = $('drop'), input = $('file');
+drop.onclick = () => input.click();
+drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) handle(f); });
+input.onchange = () => { if (input.files[0]) handle(input.files[0]); input.value = ''; };
+['optHF','optPages','optHead'].forEach(id => $(id).onchange = () => { if (lastBuffer) convert(lastBuffer.slice(0)); });
+
+function status(type, text, progress) {
+  const s = $('status'); s.className = 'status show ' + type;
+  const icons = { info: '⏳', ok: '✓', err: '✗', warn: '⚠' };
+  $('statusText').textContent = icons[type] + ' ' + text;
+  $('bar').hidden = progress === undefined;
+  if (progress !== undefined) $('barFill').style.width = (progress * 100) + '%';
+}
+
+async function handle(file) {
+  if (!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) return status('err', 'Ese archivo no es un PDF.');
+  fileName = file.name.replace(/\.pdf$/i, '');
+  lastBuffer = await file.arrayBuffer();
+  convert(lastBuffer.slice(0));
+}
+
+async function convert(buf) {
+  drop.style.pointerEvents = 'none';
+  try {
+    status('info', 'Abriendo PDF…', 0);
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const pages = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      status('info', `Leyendo página ${p} de ${pdf.numPages}…`, p / pdf.numPages);
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      pages.push(buildLines(tc.items));
+    }
+    const md = toMarkdown(pages);
+    $('out').value = md;
+    renderPreview();
+    $('result').classList.add('show');
+    const words = md.split(/\s+/).filter(Boolean).length;
+    $('meta').textContent = `${pdf.numPages} página(s) · ${words.toLocaleString('es')} palabras`;
+    if (words < 5) status('warn', 'No se encontró texto. Puede ser un PDF escaneado (imagen).');
+    else status('ok', `Convertido «${fileName}.pdf»`);
+  } catch (e) {
+    console.error(e);
+    status('err', e.name === 'PasswordException' ? 'El PDF está protegido con contraseña.' : 'No se pudo leer el PDF. Puede estar dañado.');
+  } finally { drop.style.pointerEvents = ''; }
+}
+
+// Agrupa fragmentos de texto en líneas
+function buildLines(items) {
+  const frags = items.filter(i => i.str !== undefined).map(i => ({
+    str: i.str, x: i.transform[4], y: i.transform[5], w: i.width,
+    size: Math.hypot(i.transform[2], i.transform[3]) || i.height || 10, eol: i.hasEOL
+  })).filter(f => f.str.trim() || f.str === ' ');
+  frags.sort((a, b) => b.y - a.y || a.x - b.x);
+  const lines = [];
+  for (const f of frags) {
+    let line = lines.find(l => Math.abs(l.y - f.y) < Math.max(l.size, f.size) * 0.5);
+    if (!line) { line = { y: f.y, size: f.size, frags: [] }; lines.push(line); }
+    line.frags.push(f); line.size = Math.max(line.size, f.size);
+  }
+  lines.sort((a, b) => b.y - a.y);
+  return lines.map(l => {
+    l.frags.sort((a, b) => a.x - b.x);
+    let text = '', end = null;
+    for (const f of l.frags) {
+      if (end !== null && f.x - end > l.size * 0.15 && !text.endsWith(' ') && !f.str.startsWith(' ')) text += ' ';
+      text += f.str; end = f.x + f.w;
+    }
+    // size predominante (por nº de caracteres)
+    const sizes = {}; l.frags.forEach(f => { const k = Math.round(f.size); sizes[k] = (sizes[k] || 0) + f.str.length; });
+    const size = +Object.entries(sizes).sort((a, b) => b[1] - a[1])[0][0];
+    return { text: text.replace(/\s+/g, ' ').trim(), y: l.y, size, x: l.frags[0].x };
+  }).filter(l => l.text);
+}
+
+function toMarkdown(pages) {
+  const norm = t => t.replace(/\d+/g, '#').toLowerCase();
+  // Encabezados/pies repetidos
+  if ($('optHF').checked && pages.length > 2) {
+    const count = {};
+    pages.forEach(ls => {
+      const cand = new Set([...ls.slice(0, 2), ...ls.slice(-2)].map(l => norm(l.text)));
+      cand.forEach(c => count[c] = (count[c] || 0) + 1);
+    });
+    const rep = new Set(Object.keys(count).filter(k => count[k] >= Math.max(3, pages.length * 0.5)));
+    pages = pages.map(ls => ls.filter((l, i) => !((i < 2 || i >= ls.length - 2) && (rep.has(norm(l.text)) || /^(p[áa]g(ina)?\.?\s*)?\d+(\s*(de|\/)\s*\d+)?$/i.test(l.text)))));
+  }
+  // Tamaño de cuerpo
+  const hist = {};
+  pages.flat().forEach(l => hist[l.size] = (hist[l.size] || 0) + l.text.length);
+  const body = +(Object.entries(hist).sort((a, b) => b[1] - a[1])[0] || [10])[0];
+
+  const blocks = [];
+  const bullet = /^[•·▪■◦●○‣⁃–\-*]\s*/;
+  const numbered = /^(\d{1,3}|[a-z])[.)]\s+/i;
+
+  pages.forEach((lines, pi) => {
+    if (pi > 0 && $('optPages').checked) blocks.push({ type: 'hr' });
+    let para = null, prev = null;
+    const flush = () => { if (para) { blocks.push(para); para = null; } };
+    for (const l of lines) {
+      const r = l.size / body;
+      const gap = prev ? prev.y - l.y : 0;
+      if ($('optHead').checked && r >= 1.12 && l.text.length < 150) {
+        const lvl = r >= 1.6 ? 1 : r >= 1.3 ? 2 : 3;
+        const last = blocks[blocks.length - 1];
+        flush();
+        if (last && last.type === 'h' && last.lvl === lvl && prev && prev.size === l.size && gap < l.size * 1.8) last.text += ' ' + l.text;
+        else blocks.push({ type: 'h', lvl, text: l.text });
+        prev = l; continue;
+      }
+      if (bullet.test(l.text) && l.text.length > 1) {
+        flush(); para = { type: 'li', text: l.text.replace(bullet, ''), x: l.x };
+      } else if (numbered.test(l.text) && /^\d/.test(l.text)) {
+        flush(); para = { type: 'ol', num: l.text.match(/^\d+/)[0], text: l.text.replace(numbered, ''), x: l.x };
+      } else if (para && prev && gap < l.size * 1.75 && !(para.type !== 'p' && l.x < para.x - 2)) {
+        para.text = para.text.endsWith('-') && /^[a-záéíóúñü]/.test(l.text) ? para.text.slice(0, -1) + l.text : para.text + ' ' + l.text;
+      } else {
+        flush(); para = { type: 'p', text: l.text };
+      }
+      prev = l;
+    }
+    flush();
+  });
+
+  const esc = t => t.replace(/^(#+|>|\d+\.)(\s)/, '\\$1$2');
+  let out = '', lastType = null;
+  for (const b of blocks) {
+    const listy = b.type === 'li' || b.type === 'ol';
+    if (out) out += (listy && (lastType === 'li' || lastType === 'ol')) ? '\n' : '\n\n';
+    if (b.type === 'hr') out += '---';
+    else if (b.type === 'h') out += '#'.repeat(b.lvl) + ' ' + b.text;
+    else if (b.type === 'li') out += '- ' + b.text;
+    else if (b.type === 'ol') out += b.num + '. ' + b.text;
+    else out += esc(b.text);
+    lastType = b.type;
+  }
+  return out.trim() + '\n';
+}
+
+function renderPreview() { $('preview').innerHTML = marked.parse($('out').value); }
+$('out').addEventListener('input', () => { clearTimeout(window._t); window._t = setTimeout(renderPreview, 300); });
+
+function setTab(md) {
+  $('tabMd').setAttribute('aria-selected', md); $('tabPrev').setAttribute('aria-selected', !md);
+  $('out').hidden = !md; $('preview').hidden = md;
+  if (!md) renderPreview();
+}
+$('tabMd').onclick = () => setTab(true);
+$('tabPrev').onclick = () => setTab(false);
+
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2000); }
+$('btnCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('out').value); toast('✓ Copiado al portapapeles'); }
+  catch { $('out').select(); document.execCommand('copy'); toast('✓ Copiado'); }
+};
+$('btnDown').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([$('out').value], { type: 'text/markdown;charset=utf-8' }));
+  a.download = fileName + '.md'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('✓ Descargado ' + fileName + '.md');
+};
+
+// ===== Exportar a Word (.docx) desde el Markdown actual =====
+const xmlEsc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function runs(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).filter(Boolean);
+  return parts.map(pt => {
+    let rpr = '', t = pt;
+    if (/^\*\*.+\*\*$/.test(pt)) { rpr = '<w:b/>'; t = pt.slice(2, -2); }
+    else if (/^\*.+\*$/.test(pt)) { rpr = '<w:i/>'; t = pt.slice(1, -1); }
+    else if (/^`.+`$/.test(pt)) { rpr = '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>'; t = pt.slice(1, -1); }
+    t = t.replace(/\\([#>*\d])/g, '$1');
+    return `<w:r>${rpr ? '<w:rPr>' + rpr + '</w:rPr>' : ''}<w:t xml:space="preserve">${xmlEsc(t)}</w:t></w:r>`;
+  }).join('');
+}
+function mdToDocXml(md) {
+  const para = (style, text, extra = '') => `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ''}${extra}</w:pPr>${runs(text)}</w:p>`;
+  const out = []; let buf = [];
+  const flush = () => { if (buf.length) { out.push(para('', buf.join(' '))); buf = []; } };
+  for (const raw of md.split('\n')) {
+    const l = raw.trim(); let m;
+    if (!l) { flush(); continue; }
+    if (/^(---|\*\*\*)$/.test(l)) { flush(); out.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>'); }
+    else if ((m = l.match(/^(#{1,6})\s+(.*)/))) { flush(); out.push(para('Heading' + Math.min(m[1].length, 3), m[2])); }
+    else if ((m = l.match(/^[-*+]\s+(.*)/))) { flush(); out.push(para('ListParagraph', m[1], '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>')); }
+    else if ((m = l.match(/^\d+[.)]\s+(.*)/))) { flush(); out.push(para('ListParagraph', m[1], '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>')); }
+    else buf.push(l);
+  }
+  flush();
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${out.join('')}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+}
+async function buildDocx(md) {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`);
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+  zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`);
+  const h = (id, name, sz, color) => `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="${id.slice(-1) - 1}"/></w:pPr><w:rPr><w:b/><w:color w:val="${color}"/><w:sz w:val="${sz}"/></w:rPr></w:style>`;
+  zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:lang w:val="es-ES"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${h('Heading1','heading 1',36,'1D4ED8')}${h('Heading2','heading 2',30,'1E3A8A')}${h('Heading3','heading 3',26,'334155')}<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60"/><w:ind w:left="720"/></w:pPr></w:style></w:styles>`);
+  zip.file('word/numbering.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>`);
+  zip.file('word/document.xml', mdToDocXml(md));
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+$('btnDocx').onclick = async () => {
+  const btn = $('btnDocx'); btn.disabled = true; btn.textContent = 'Generando…';
+  try {
+    const blob = await buildDocx($('out').value);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = fileName + '.docx'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('✓ Descargado ' + fileName + '.docx');
+  } catch (e) { console.error(e); status('err', 'No se pudo generar el Word.'); }
+  finally { btn.disabled = false; btn.textContent = 'Descargar Word'; }
+};
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
