@@ -46,6 +46,19 @@ header p{margin:2px 0 0;color:var(--color-text-muted)}
 .bar{flex:1;height:8px;background:#fff;border-radius:99px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--color-primary);transition:width .2s}
 .result{display:none;margin-top:14px}
+.files{display:none;margin:14px 0}
+.files.show{display:block}
+.files-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
+.files-head h2{font-size:1.05rem;margin:0 auto 0 0}
+.file-list{list-style:none;margin:0;padding:0;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.file-item{display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--color-border);border-radius:12px;padding:6px 6px 6px 12px}
+.file-item.active{border-color:var(--color-primary);background:var(--color-primary-light)}
+.file-item button.sel{flex:1;min-width:0;text-align:left;background:none;border:0;font:inherit;cursor:pointer;min-height:44px;color:var(--color-text)}
+.file-item .name{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-item .st{display:block;font-size:.85rem;color:var(--color-text-muted)}
+.file-item .st.err{color:var(--color-error)}.file-item .st.ok{color:#166534}.file-item .st.warn{color:#92400e}
+.file-item .del{width:44px;height:44px;border:0;background:none;border-radius:10px;cursor:pointer;color:var(--color-text-muted);font-size:1.1rem}
+.file-item .del:hover{background:var(--color-error-bg);color:var(--color-error)}
 .result.show{display:block}
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
 .tabs{display:flex;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:4px;margin-right:auto}
@@ -80,9 +93,9 @@ textarea:focus{outline:none}
 
   <div class="drop" id="drop" role="button" tabindex="0" aria-label="Seleccionar archivo PDF">
     <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg>
-    <strong>Arrastra aquí un PDF o pulsa para elegirlo</strong>
+    <strong>Arrastra aquí uno o varios PDF o pulsa para elegirlos</strong>
     <span>Funciona con PDF de texto (no escaneados)</span>
-    <input type="file" id="file" accept="application/pdf,.pdf" hidden>
+    <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden>
   </div>
 
   <div class="opts">
@@ -92,6 +105,16 @@ textarea:focus{outline:none}
   </div>
 
   <div class="status" id="status" role="status" aria-live="polite"><span id="statusText"></span><div class="bar" id="bar" hidden><i id="barFill"></i></div></div>
+
+  <section class="files" id="files" aria-label="Archivos">
+    <div class="files-head">
+      <h2 id="filesTitle">Archivos</h2>
+      <button class="btn sec" id="btnZipMd">Todo en .md (ZIP)</button>
+      <button class="btn" id="btnZipDocx">Todo en Word (ZIP)</button>
+      <button class="btn sec" id="btnClear">Vaciar lista</button>
+    </div>
+    <ul class="file-list" id="fileList"></ul>
+  </section>
 
   <section class="result" id="result">
     <div class="toolbar">
@@ -116,16 +139,16 @@ textarea:focus{outline:none}
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const $ = id => document.getElementById(id);
 let fileName = 'documento';
-let lastBuffer = null;
+const docs = []; let current = null, busy = false;
 
 const drop = $('drop'), input = $('file');
 drop.onclick = () => input.click();
 drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
 ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
-drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) handle(f); });
-input.onchange = () => { if (input.files[0]) handle(input.files[0]); input.value = ''; };
-['optHF','optPages','optHead'].forEach(id => $(id).onchange = () => { if (lastBuffer) convert(lastBuffer.slice(0)); });
+drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
+input.onchange = () => { addFiles([...input.files]); input.value = ''; };
+['optHF','optPages','optHead'].forEach(id => $(id).onchange = () => { docs.forEach(d => { if (d.buffer) d.state = 'pending'; }); processQueue(); });
 
 function status(type, text, progress) {
   const s = $('status'); s.className = 'status show ' + type;
@@ -135,21 +158,40 @@ function status(type, text, progress) {
   if (progress !== undefined) $('barFill').style.width = (progress * 100) + '%';
 }
 
-async function handle(file) {
-  if (!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) return status('err', 'Ese archivo no es un PDF.');
-  fileName = file.name.replace(/\.pdf$/i, '');
-  lastBuffer = await file.arrayBuffer();
-  convert(lastBuffer.slice(0));
+async function addFiles(files) {
+  const pdfs = files.filter(f => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name));
+  if (!pdfs.length) return status('err', 'Ninguno de los archivos es un PDF.');
+  if (pdfs.length < files.length) toast('⚠ Se han ignorado ' + (files.length - pdfs.length) + ' archivo(s) que no son PDF');
+  for (const f of pdfs) {
+    let name = f.name.replace(/\.pdf$/i, ''), base = name, n = 2;
+    while (docs.some(d => d.name === name)) name = `${base} (${n++})`;
+    docs.push({ id: Math.random().toString(36).slice(2), name, buffer: await f.arrayBuffer(), md: '', state: 'pending', info: 'En cola' });
+  }
+  renderList(); processQueue();
 }
 
-async function convert(buf) {
-  drop.style.pointerEvents = 'none';
+async function processQueue() {
+  if (busy) return; busy = true; drop.style.pointerEvents = 'none';
   try {
-    status('info', 'Abriendo PDF…', 0);
-    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let d;
+    while ((d = docs.find(x => x.state === 'pending'))) {
+      d.state = 'working'; d.info = 'Convirtiendo…'; renderList();
+      await convertDoc(d);
+      if (!current || current === d.id) select(d.id);
+      renderList();
+    }
+    const errs = docs.filter(x => x.state === 'err').length;
+    if (docs.length) status(errs ? 'warn' : 'ok', docs.length === 1 ? (errs ? docs[0].info : `Convertido «${docs[0].name}.pdf»`) : `${docs.length - errs} de ${docs.length} archivos convertidos`);
+  } finally { busy = false; drop.style.pointerEvents = ''; }
+}
+
+async function convertDoc(d) {
+  const idx = docs.filter(x => x.state !== 'pending').length;
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: d.buffer.slice(0) }).promise;
     const pages = [];
     for (let p = 1; p <= pdf.numPages; p++) {
-      status('info', `Leyendo página ${p} de ${pdf.numPages}…`, p / pdf.numPages);
+      status('info', `«${d.name}» (${idx} de ${docs.length}) · página ${p} de ${pdf.numPages}`, p / pdf.numPages);
       const page = await pdf.getPage(p);
       const tc = await page.getTextContent();
       const lines = buildLines(tc.items);
@@ -158,22 +200,62 @@ async function convert(buf) {
       lines.sort((a, b) => b.y - a.y);
       pages.push(lines);
     }
-    const md = toMarkdown(pages);
-    $('out').value = md;
-    renderPreview();
-    $('result').classList.add('show');
-    const words = md.split(/\s+/).filter(Boolean).length;
-    $('meta').textContent = `${pdf.numPages} página(s) · ${words.toLocaleString('es')} palabras`;
-    if (words < 5) status('warn', 'No se encontró texto. Puede ser un PDF escaneado (imagen).');
-    else status('ok', `Convertido «${fileName}.pdf»`);
+    d.md = toMarkdown(pages);
+    const words = d.md.split(/\s+/).filter(Boolean).length;
+    d.meta = `${pdf.numPages} página(s) · ${words.toLocaleString('es')} palabras`;
+    if (words < 5) { d.state = 'warn'; d.info = 'Sin texto (¿escaneado?)'; }
+    else { d.state = 'ok'; d.info = d.meta; }
   } catch (e) {
     console.error(e);
-    status('err', e.name === 'PasswordException' ? 'El PDF está protegido con contraseña.' : 'No se pudo leer el PDF. Puede estar dañado.');
-  } finally { drop.style.pointerEvents = ''; }
+    d.state = 'err'; d.md = '';
+    d.info = e.name === 'PasswordException' ? 'Protegido con contraseña' : 'No se pudo leer';
+  }
 }
+
+function renderList() {
+  $('files').classList.toggle('show', docs.length > 0);
+  $('filesTitle').textContent = docs.length === 1 ? '1 archivo' : `${docs.length} archivos`;
+  const many = docs.filter(d => d.md).length > 1;
+  $('btnZipMd').hidden = $('btnZipDocx').hidden = !many;
+  $('btnZipMd').disabled = $('btnZipDocx').disabled = busy;
+  const icon = { ok: '✓', warn: '⚠', err: '✗', working: '⏳', pending: '•' };
+  $('fileList').innerHTML = '';
+  docs.forEach(d => {
+    const li = document.createElement('li');
+    li.className = 'file-item' + (d.id === current ? ' active' : '');
+    const sel = document.createElement('button'); sel.className = 'sel';
+    sel.innerHTML = '<span class="name"></span><span class="st"></span>';
+    sel.querySelector('.name').textContent = d.name + '.pdf';
+    const st = sel.querySelector('.st'); st.textContent = icon[d.state] + ' ' + d.info; st.classList.add(d.state);
+    sel.disabled = !d.md; sel.onclick = () => select(d.id);
+    sel.setAttribute('aria-current', d.id === current);
+    const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕';
+    del.setAttribute('aria-label', 'Quitar ' + d.name); del.disabled = d.state === 'working';
+    del.onclick = () => removeDoc(d.id);
+    li.append(sel, del); $('fileList').append(li);
+  });
+}
+
+function select(id) {
+  const d = docs.find(x => x.id === id); if (!d || !d.md) return;
+  current = id; fileName = d.name;
+  $('out').value = d.md; renderPreview();
+  $('meta').textContent = `${d.name}.pdf · ${d.meta}`;
+  $('result').classList.add('show'); renderList();
+}
+
+function removeDoc(id) {
+  const i = docs.findIndex(x => x.id === id); if (i < 0) return;
+  docs.splice(i, 1);
+  if (current === id) { current = null; const next = docs.find(x => x.md); if (next) select(next.id); else { $('result').classList.remove('show'); $('status').className = 'status'; } }
+  renderList();
+}
+$('btnClear').onclick = () => { if (busy) return; docs.length = 0; current = null; $('result').classList.remove('show'); $('status').className = 'status'; renderList(); };
 
 // Agrupa fragmentos de texto en líneas
 function buildLines(items) {
+  const rotated = items.filter(i => i.str && i.str.trim() && Math.abs(i.transform[1]) > Math.abs(i.transform[0]));
+  items = items.filter(i => !rotated.includes(i));
   const frags = items.filter(i => i.str !== undefined).map(i => ({
     str: i.str, x: i.transform[4], y: i.transform[5], w: i.width,
     size: Math.hypot(i.transform[2], i.transform[3]) || i.height || 10, eol: i.hasEOL
@@ -202,8 +284,8 @@ function buildLines(items) {
     // size predominante (por nº de caracteres)
     const sizes = {}; l.frags.forEach(f => { const k = Math.round(f.size); sizes[k] = (sizes[k] || 0) + f.str.length; });
     const size = +Object.entries(sizes).sort((a, b) => b[1] - a[1])[0][0];
-    return { text: text.replace(/\s+/g, ' ').trim(), y: l.y, size, x: l.frags[0].x, cells: cells.filter(c => c.text) };
-  }).filter(l => l.text);
+    return { text: text.replace(/\s+/g, ' ').trim(), y: l.y, size, x: l.frags[0].x, cells: cells.filter(c => c.text), parts: l.frags.map(f => ({ x: f.x, text: f.str.trim() })) };
+  }).filter(l => l.text).concat(rotated.length ? [{ text: rotated.map(i => i.str.trim()).join(' · '), y: -1e6, size: 0, x: 0, cells: [], side: true }] : []);
 }
 
 // Localiza imágenes (fotos) en la página siguiendo la matriz de transformación
@@ -223,7 +305,7 @@ async function findImages(page) {
       const pts = [[0,0],[1,0],[0,1],[1,1]].map(([x, y]) => [ctm[0]*x + ctm[2]*y + ctm[4], ctm[1]*x + ctm[3]*y + ctm[5]]);
       const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
       const box = { left: Math.min(...xs), right: Math.max(...xs), bottom: Math.min(...ys), top: Math.max(...ys) };
-      if (box.right - box.left < 40 || box.top - box.bottom < 40) continue; // iconos o adornos
+      if (box.right - box.left < 60 || box.top - box.bottom < 60) continue; // iconos o adornos
       const dup = found.find(b => b.bottom < box.top && box.bottom < b.top && b.left < box.right && box.left < b.right);
       if (dup) { Object.assign(dup, { left: Math.min(dup.left, box.left), right: Math.max(dup.right, box.right), bottom: Math.min(dup.bottom, box.bottom), top: Math.max(dup.top, box.top) }); }
       else found.push(box);
@@ -234,34 +316,49 @@ async function findImages(page) {
 
 // Agrupa líneas consecutivas con varias celdas alineadas en tablas
 function detectTables(lines) {
+  const isMulti = l => l && !l.image && !l.side && l.cells && l.cells.length >= 2;
+  const aligned = (l, ref, tol) => l.cells.filter(c => ref.cells.some(r => Math.abs(r.x - c.x) <= tol)).length >= Math.ceil(l.cells.length * 0.6);
   const out = []; let i = 0;
   while (i < lines.length) {
     const first = lines[i];
-    if (first.image || !first.cells || first.cells.length < 2) { out.push(first); i++; continue; }
-    let j = i + 1;
+    if (!isMulti(first)) { out.push(first); i++; continue; }
+    const tol = first.size * 1.5;
+    let j = i + 1, lastMulti = first;
     while (j < lines.length) {
       const l = lines[j], pr = lines[j - 1];
-      if (l.image || pr.y - l.y > Math.max(l.size, pr.size) * 2.6) break;
-      if (l.cells.length >= 2 || (l.x > first.x + first.size * 1.5 && j + 1 < lines.length && lines[j + 1].cells && lines[j + 1].cells.length >= 2)) j++;
-      else break;
+      if (l.image || l.side || pr.y - l.y > Math.max(l.size, pr.size) * 2.6) break;
+      const maxLen = r => Math.max(...r.cells.map(c => c.text.length));
+      if (isMulti(l) && maxLen(l) > maxLen(lastMulti) * 2 + 10) break;
+      if (isMulti(l) && aligned(l, lastMulti, tol)) { lastMulti = l; j++; continue; }
+      // fila de una celda entre dos filas de tabla (p. ej. subcabecera)
+      const nx = lines[j + 1];
+      if (!isMulti(l) && isMulti(nx) && nx && l.y - nx.y < l.size * 2.6 && aligned(nx, lastMulti, tol)) { j++; continue; }
+      break;
     }
-    const group = lines.slice(i, j), multi = group.filter(l => l.cells.length >= 2);
-    const tol = first.size * 1.5;
-    // columnas
-    const starts = group.flatMap(l => l.cells.map(c => c.x)).sort((a, b) => a - b);
+    const group = lines.slice(i, j), multi = group.filter(isMulti);
+    const ctol = first.size * 1.0;
+    const starts = group.flatMap(l => l.parts.map(c => c.x)).sort((a, b) => a - b);
     const clusters = [];
-    starts.forEach(x => { const c = clusters[clusters.length - 1]; if (c && x - c.max <= tol) { c.max = x; c.n++; } else clusters.push({ min: x, max: x, n: 1 }); });
-    const cols = clusters.filter(c => c.n >= Math.max(2, multi.length * 0.3)).map(c => c.min);
+    starts.forEach(x => { const c = clusters[clusters.length - 1]; if (c && x - c.max <= ctol) { c.max = x; c.n++; } else clusters.push({ min: x, max: x, n: 1 }); });
+    const cols = clusters.map(c => c.min);
     const avgLen = multi.reduce((a, l) => a + l.text.length, 0) / (multi.reduce((a, l) => a + l.cells.length, 0) || 1);
     if (multi.length < 2 || cols.length < 2 || (cols.length === 2 && avgLen > 60)) { out.push(first); i++; continue; }
     const rows = [];
     group.forEach(l => {
       const row = cols.map(() => '');
-      l.cells.forEach(c => { let k = 0; cols.forEach((cx, idx) => { if (c.x >= cx - tol) k = idx; }); row[k] = (row[k] ? row[k] + ' ' : '') + c.text; });
-      if (rows.length && !row[0] && rows.length > 1) row.forEach((t, k) => { if (t) rows[rows.length - 1][k] += ' ' + t; });
+      l.parts.forEach(c => { let k = 0; cols.forEach((cx, idx) => { if (c.x >= cx - ctol * 0.5) k = idx; }); row[k] = (row[k] ? row[k] + ' ' : '') + c.text; });
+      if (rows.length > 1 && !row[0]) row.forEach((t, k) => { if (t) rows[rows.length - 1][k] += ' ' + t; });
       else rows.push(row);
     });
-    out.push({ table: true, rows, y: first.y, size: first.size, text: '\u0000tbl' });
+    // fusionar columnas vecinas que nunca coinciden en la misma fila (cabecera desplazada)
+    for (let k = cols.length - 2; k >= 0; k--) {
+      if (cols[k + 1] - cols[k] <= first.size * 2.5 && !rows.some(r => r[k] && r[k + 1])) {
+        rows.forEach(r => { r[k] = r[k] || r[k + 1]; r.splice(k + 1, 1); }); cols.splice(k + 1, 1);
+      }
+    }
+    // quitar columnas totalmente vacías
+    const keep = cols.map((_, k) => rows.some(r => r[k]));
+    out.push({ table: true, rows: rows.map(r => r.filter((_, k) => keep[k])), y: first.y, size: first.size, text: '\u0000tbl' });
     i = j;
   }
   return out;
@@ -281,7 +378,7 @@ function toMarkdown(pages) {
   }
   // Tamaño de cuerpo
   const hist = {};
-  pages.flat().forEach(l => { if (!l.image) hist[l.size] = (hist[l.size] || 0) + l.text.length; });
+  pages.flat().forEach(l => { if (!l.image && !l.side) hist[l.size] = (hist[l.size] || 0) + l.text.length; });
   const body = +(Object.entries(hist).sort((a, b) => b[1] - a[1])[0] || [10])[0];
 
   const blocks = [];
@@ -295,6 +392,7 @@ function toMarkdown(pages) {
     const flush = () => { if (para) { blocks.push(para); para = null; } };
     for (const l of lines) {
       if (l.image) { flush(); blocks.push({ type: 'img', page: l.page }); prev = null; continue; }
+      if (l.side) { flush(); blocks.push({ type: 'p', text: l.text }); prev = null; continue; }
       if (l.table) { flush(); blocks.push({ type: 'table', rows: l.rows }); prev = null; continue; }
       const r = l.size / body;
       const gap = prev ? prev.y - l.y : 0;
@@ -341,7 +439,7 @@ function toMarkdown(pages) {
 }
 
 function renderPreview() { $('preview').innerHTML = marked.parse($('out').value); }
-$('out').addEventListener('input', () => { clearTimeout(window._t); window._t = setTimeout(renderPreview, 300); });
+$('out').addEventListener('input', () => { const d = docs.find(x => x.id === current); if (d) d.md = $('out').value; clearTimeout(window._t); window._t = setTimeout(renderPreview, 300); });
 
 function setTab(md) {
   $('tabMd').setAttribute('aria-selected', md); $('tabPrev').setAttribute('aria-selected', !md);
@@ -432,6 +530,22 @@ $('btnDocx').onclick = async () => {
   } catch (e) { console.error(e); status('err', 'No se pudo generar el Word.'); }
   finally { btn.disabled = false; btn.textContent = 'Descargar Word'; }
 };
+
+async function zipAll(kind) {
+  const btn = kind === 'md' ? $('btnZipMd') : $('btnZipDocx'), label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Preparando…';
+  try {
+    const zip = new JSZip();
+    for (const d of docs.filter(x => x.md)) zip.file(d.name + (kind === 'md' ? '.md' : '.docx'), kind === 'md' ? d.md : await buildDocx(d.md));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = kind === 'md' ? 'pdf-a-markdown.zip' : 'pdf-a-word.zip'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('✓ Descargado ' + a.download);
+  } catch (e) { console.error(e); status('err', 'No se pudo crear el ZIP.'); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+$('btnZipMd').onclick = () => zipAll('md');
+$('btnZipDocx').onclick = () => zipAll('docx');
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
