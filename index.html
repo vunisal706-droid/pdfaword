@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#2563eb">
+<meta name="theme-color" content="#4f46e5">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>PDF a Markdown y Word</title>
@@ -16,92 +16,127 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{
-  --color-primary:#2563eb;--color-primary-light:#dbeafe;--color-primary-dark:#1d4ed8;
+  --color-primary:#4f46e5;--color-primary-light:#e0e7ff;--color-primary-dark:#4338ca;--color-secondary:#ec4899;
   --color-bg:#ffffff;--color-surface:#f8fafc;--color-border:#e2e8f0;
   --color-text:#1e293b;--color-text-muted:#64748b;
   --color-success:#16a34a;--color-success-bg:#dcfce7;--color-error:#dc2626;--color-error-bg:#fee2e2;
   --color-warning:#d97706;--color-warning-bg:#fef3c7;
+  --grad:linear-gradient(120deg,#2563eb,#7c3aed 45%,#ec4899);
+  --glass:rgba(255,255,255,.78);
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:var(--color-text);
-  background:radial-gradient(ellipse at 0% 0%,rgba(37,99,235,.10),transparent 60%),radial-gradient(ellipse at 100% 0%,rgba(124,58,237,.08),transparent 60%),var(--color-bg);min-height:100vh}
-.wrap{max-width:1100px;margin:0 auto;padding:28px 18px 60px}
-header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
-header img{width:48px;height:48px;border-radius:12px}
-h1{font-size:clamp(1.5rem,4vw,2.2rem);margin:0;font-weight:800}
-header p{margin:2px 0 0;color:var(--color-text-muted)}
-.drop{border:2px dashed #93c5fd;background:rgba(255,255,255,.8);border-radius:20px;padding:36px 20px;text-align:center;cursor:pointer;transition:.2s}
-.drop:hover,.drop.over{background:var(--color-primary-light);border-color:var(--color-primary)}
-.drop strong{display:block;font-size:1.15rem;margin:8px 0 4px}
+html,body{min-height:100%}
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:var(--color-text);background:#f5f7ff;overflow-x:hidden}
+/* Fondo animado que va cambiando de color (siempre claro) */
+.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;
+  background:linear-gradient(125deg,#dbeafe,#ede9fe,#fce7f3,#fef9c3,#dcfce7,#cffafe,#dbeafe);background-size:400% 400%;animation:bgShift 24s ease-in-out infinite}
+.bg i{position:absolute;border-radius:50%;filter:blur(60px);opacity:.55;animation:float 18s ease-in-out infinite}
+.bg i:nth-child(1){width:420px;height:420px;background:#93c5fd;top:-120px;left:-80px}
+.bg i:nth-child(2){width:380px;height:380px;background:#f9a8d4;top:30%;right:-120px;animation-delay:-6s;animation-duration:22s}
+.bg i:nth-child(3){width:340px;height:340px;background:#c4b5fd;bottom:-120px;left:25%;animation-delay:-12s;animation-duration:26s}
+.bg i:nth-child(4){width:260px;height:260px;background:#fde68a;top:12%;left:45%;animation-delay:-3s;animation-duration:20s}
+@keyframes bgShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(60px,40px) scale(1.1)}66%{transform:translate(-40px,30px) scale(.92)}}
+.wrap{max-width:1100px;margin:0 auto;padding:32px 18px 48px}
+header{display:flex;align-items:center;gap:18px;margin-bottom:26px;padding:20px 24px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.7);border-radius:24px;box-shadow:0 10px 40px rgba(79,70,229,.12)}
+header img{width:64px;height:64px;border-radius:16px;box-shadow:0 6px 18px rgba(79,70,229,.25);animation:pop 4s ease-in-out infinite}
+@keyframes pop{0%,100%{transform:rotate(0) scale(1)}50%{transform:rotate(-4deg) scale(1.05)}}
+h1{font-size:clamp(1.6rem,4.5vw,2.5rem);margin:0;font-weight:800;line-height:1.1;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+header p{margin:6px 0 0;color:var(--color-text-muted);font-size:1.02rem}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{font-size:.8rem;font-weight:700;padding:4px 10px;border-radius:99px;background:#fff;border:1px solid var(--color-border)}
+.chip.pdf{color:#dc2626}.chip.md{color:#0f766e}.chip.w{color:#1d4ed8}
+.drop{position:relative;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:24px;padding:42px 20px;text-align:center;cursor:pointer;transition:transform .2s,box-shadow .2s;box-shadow:0 8px 30px rgba(0,0,0,.06)}
+.drop::before{content:"";position:absolute;inset:0;border-radius:24px;padding:3px;background:linear-gradient(90deg,#2563eb,#7c3aed,#ec4899,#f59e0b,#2563eb);background-size:300% 100%;animation:border 6s linear infinite;
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+@keyframes border{to{background-position:300% 0}}
+.drop:hover,.drop.over{transform:translateY(-3px);box-shadow:0 16px 40px rgba(79,70,229,.2)}
+.drop .ic{width:76px;height:76px;margin:0 auto;border-radius:22px;display:grid;place-items:center;background:var(--grad);box-shadow:0 10px 24px rgba(124,58,237,.35);animation:bob 3s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.drop strong{display:block;font-size:1.2rem;margin:14px 0 4px}
 .drop span{color:var(--color-text-muted)}
-.opts{display:flex;flex-wrap:wrap;gap:10px 22px;margin:16px 4px}
-.opts label{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:44px}
+.opts{display:flex;flex-wrap:wrap;gap:8px 10px;margin:16px 0}
+.opts label{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:44px;padding:6px 14px;background:var(--glass);border:1px solid rgba(255,255,255,.8);border-radius:99px;font-weight:600;font-size:.95rem;transition:background .15s}
+.opts label:hover{background:#fff}
 .opts input{width:20px;height:20px;accent-color:var(--color-primary)}
-.status{display:none;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;margin:10px 0;font-weight:600}
+.status{display:none;align-items:center;gap:10px;padding:12px 16px;border-radius:14px;margin:10px 0;font-weight:600}
 .status.show{display:flex}
 .status.info{background:var(--color-primary-light);color:var(--color-primary-dark)}
 .status.ok{background:var(--color-success-bg);color:#166534}
 .status.err{background:var(--color-error-bg);color:#991b1b}
 .status.warn{background:var(--color-warning-bg);color:#92400e}
-.bar{flex:1;height:8px;background:#fff;border-radius:99px;overflow:hidden}
-.bar i{display:block;height:100%;width:0;background:var(--color-primary);transition:width .2s}
+.bar{flex:1;height:10px;background:#fff;border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--grad);transition:width .2s}
 .result{display:none;margin-top:14px}
 .files{display:none;margin:14px 0}
 .files.show{display:block}
 .files-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
-.files-head h2{font-size:1.05rem;margin:0 auto 0 0}
-.file-list{list-style:none;margin:0;padding:0;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
-.file-item{display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--color-border);border-radius:12px;padding:6px 6px 6px 12px}
-.file-item.active{border-color:var(--color-primary);background:var(--color-primary-light)}
+.files-head h2{font-size:1.1rem;margin:0 auto 0 0}
+.file-list{list-style:none;margin:0;padding:0;display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.file-item{display:flex;align-items:center;gap:8px;background:var(--glass);backdrop-filter:blur(10px);border:1.5px solid rgba(255,255,255,.9);border-radius:16px;padding:6px 6px 6px 14px;transition:transform .15s,box-shadow .15s}
+.file-item:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.08)}
+.file-item.active{border-color:var(--color-primary);background:#fff;box-shadow:0 8px 24px rgba(79,70,229,.18)}
 .file-item button.sel{flex:1;min-width:0;text-align:left;background:none;border:0;font:inherit;cursor:pointer;min-height:44px;color:var(--color-text)}
-.file-item .name{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-item .name{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .file-item .st{display:block;font-size:.85rem;color:var(--color-text-muted)}
 .file-item .st.err{color:var(--color-error)}.file-item .st.ok{color:#166534}.file-item .st.warn{color:#92400e}
-.file-item .del{width:44px;height:44px;border:0;background:none;border-radius:10px;cursor:pointer;color:var(--color-text-muted);font-size:1.1rem}
+.file-item .del{width:44px;height:44px;border:0;background:none;border-radius:12px;cursor:pointer;color:var(--color-text-muted);font-size:1.1rem}
 .file-item .del:hover{background:var(--color-error-bg);color:var(--color-error)}
-.result.show{display:block}
+.result.show{display:block;animation:fadeInUp .3s ease}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
-.tabs{display:flex;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:4px;margin-right:auto}
-.tab{border:0;background:none;padding:10px 16px;border-radius:9px;font:inherit;font-weight:600;color:var(--color-text-muted);cursor:pointer;min-height:44px}
-.tab[aria-selected=true]{background:#fff;color:var(--color-primary);box-shadow:0 1px 4px rgba(0,0,0,.08)}
-.btn{border:0;border-radius:12px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer;min-height:44px;background:var(--color-primary);color:#fff;transition:transform .1s,background .15s}
-.btn:hover{background:var(--color-primary-dark)}
-.btn.sec{background:#fff;color:var(--color-primary);border:1.5px solid var(--color-primary)}
+.tabs{display:flex;background:var(--glass);border:1px solid rgba(255,255,255,.9);border-radius:14px;padding:4px;margin-right:auto}
+.tab{border:0;background:none;padding:10px 18px;border-radius:10px;font:inherit;font-weight:700;color:var(--color-text-muted);cursor:pointer;min-height:44px}
+.tab[aria-selected=true]{background:#fff;color:var(--color-primary);box-shadow:0 2px 8px rgba(79,70,229,.15)}
+.btn{border:0;border-radius:14px;padding:10px 20px;font:inherit;font-weight:700;cursor:pointer;min-height:44px;background:var(--grad);background-size:150% 100%;color:#fff;box-shadow:0 6px 16px rgba(124,58,237,.3);transition:transform .1s,background-position .3s,box-shadow .2s}
+.btn:hover{background-position:100% 0;box-shadow:0 8px 22px rgba(124,58,237,.4)}
+.btn.sec{background:#fff;color:var(--color-primary);border:1.5px solid #c7d2fe;box-shadow:none}
 .btn.sec:hover{background:var(--color-primary-light)}
 .btn:active{transform:scale(.96)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 :focus-visible{outline:3px solid var(--color-primary);outline-offset:3px}
-.panel{background:#fff;border:1px solid var(--color-border);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.05);overflow:hidden}
+.panel{background:#fff;border:1px solid rgba(255,255,255,.9);border-radius:20px;box-shadow:0 12px 40px rgba(79,70,229,.1);overflow:hidden}
 textarea{width:100%;min-height:60vh;border:0;padding:20px;font:14px/1.6 'JetBrains Mono',ui-monospace,monospace;color:var(--color-text);resize:vertical}
 textarea:focus{outline:none}
-.preview{padding:24px 30px;min-height:60vh;line-height:1.65;overflow-x:auto}
+.preview{padding:28px 36px;min-height:60vh;line-height:1.55;overflow-x:auto}
 .preview h1,.preview h2,.preview h3{line-height:1.25}
+.preview img{max-width:100%;height:auto;display:block;margin:12px auto;border-radius:6px}
 .preview table{border-collapse:collapse}.preview td,.preview th{border:1px solid var(--color-border);padding:6px 10px}
 .meta{color:var(--color-text-muted);font-size:.9rem;margin-top:8px}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);background:#fff;color:#166534;border:2px solid var(--color-success);padding:12px 20px;border-radius:12px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.12);transition:transform .25s}
+.credit{margin-top:44px;text-align:center}
+.credit small{display:block;font-size:.9rem;color:var(--color-text-muted);font-weight:600;letter-spacing:.04em}
+.credit strong{display:inline-block;margin-top:4px;font-size:clamp(1.4rem,4vw,2rem);font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);background:#fff;color:#166534;border:2px solid var(--color-success);padding:12px 20px;border-radius:14px;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.12);transition:transform .25s}
 .toast.show{transform:translateX(-50%) translateY(0)}
 [hidden]{display:none!important}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}}
+@media (max-width:600px){header{flex-direction:column;text-align:center}.chips{justify-content:center}.preview{padding:20px}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 </style>
 </head>
 <body>
+<div class="bg" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="wrap">
   <header>
-    <img src="icon-192.png" width="48" height="48" alt="">
-    <div><h1>PDF a Markdown y Word</h1><p>Convierte tus PDF en Markdown o Word. Todo se procesa en tu dispositivo.</p></div>
+    <img src="icon-192.png" width="64" height="64" alt="">
+    <div>
+      <h1>PDF a Markdown y Word</h1>
+      <p>Convierte tus PDF conservando títulos, listas, tablas, colores e imágenes. Todo se procesa en tu dispositivo.</p>
+      <div class="chips" aria-hidden="true"><span class="chip pdf">PDF</span><span class="chip">→</span><span class="chip md">Markdown</span><span class="chip w">Word</span></div>
+    </div>
   </header>
 
   <div class="drop" id="drop" role="button" tabindex="0" aria-label="Seleccionar archivo PDF">
-    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg>
+    <div class="ic"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg></div>
     <strong>Arrastra aquí uno o varios PDF o pulsa para elegirlos</strong>
     <span>Funciona con PDF de texto (no escaneados)</span>
     <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden>
   </div>
 
   <div class="opts">
-    <label for="optHF"><input type="checkbox" id="optHF" checked> Quitar encabezados y pies repetidos</label>
-    <label for="optPages"><input type="checkbox" id="optPages"> Separar páginas con ---</label>
+    <label for="optFmt"><input type="checkbox" id="optFmt" checked> Conservar colores, tamaños y fuentes</label>
     <label for="optHead"><input type="checkbox" id="optHead" checked> Detectar títulos</label>
+    <label for="optHF"><input type="checkbox" id="optHF" checked> Quitar encabezados y pies repetidos</label>
+    <label for="optPages"><input type="checkbox" id="optPages"> Separar páginas</label>
   </div>
 
   <div class="status" id="status" role="status" aria-live="polite"><span id="statusText"></span><div class="bar" id="bar" hidden><i id="barFill"></i></div></div>
@@ -132,11 +167,18 @@ textarea:focus{outline:none}
     </div>
     <div class="meta" id="meta"></div>
   </section>
+  <footer class="credit"><small>Creada por</small><strong>Víctor Manuel Única Salas</strong></footer>
 </div>
 <div class="toast" id="toast" role="alert"></div>
 
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const PDF_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
+const STD_FONTS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/';
+// Worker desde blob: evita el bloqueo de workers de otro dominio en algunos navegadores
+try {
+  pdfjsLib.GlobalWorkerOptions.workerPort = new Worker(URL.createObjectURL(new Blob([`importScripts('${PDF_WORKER}');`], { type: 'text/javascript' })));
+} catch (e) { console.warn('Worker por blob no disponible, se usa el normal', e); }
 const $ = id => document.getElementById(id);
 let fileName = 'documento';
 const docs = []; let current = null, busy = false;
@@ -148,7 +190,7 @@ drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefau
 ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
 input.onchange = () => { addFiles([...input.files]); input.value = ''; };
-['optHF','optPages','optHead'].forEach(id => $(id).onchange = () => { docs.forEach(d => { if (d.buffer) d.state = 'pending'; }); processQueue(); });
+['optHF','optPages','optHead','optFmt'].forEach(id => $(id).onchange = () => { docs.forEach(d => { if (d.buffer) d.state = 'pending'; }); processQueue(); });
 
 function status(type, text, progress) {
   const s = $('status'); s.className = 'status show ' + type;
@@ -188,19 +230,25 @@ async function processQueue() {
 async function convertDoc(d) {
   const idx = docs.filter(x => x.state !== 'pending').length;
   try {
-    const pdf = await pdfjsLib.getDocument({ data: d.buffer.slice(0) }).promise;
-    const pages = [];
+    let pdf;
+    try { pdf = await pdfjsLib.getDocument({ data: d.buffer.slice(0), standardFontDataUrl: STD_FONTS }).promise; }
+    catch (e) {
+      if (e.name === 'PasswordException' || !pdfjsLib.GlobalWorkerOptions.workerPort) throw e;
+      console.warn('Reintento sin worker por blob', e);
+      pdfjsLib.GlobalWorkerOptions.workerPort = null;
+      pdf = await pdfjsLib.getDocument({ data: d.buffer.slice(0), standardFontDataUrl: STD_FONTS }).promise;
+    }
+    const pages = []; d.images = {};
     for (let p = 1; p <= pdf.numPages; p++) {
       status('info', `«${d.name}» (${idx} de ${docs.length}) · página ${p} de ${pdf.numPages}`, p / pdf.numPages);
       const page = await pdf.getPage(p);
-      const tc = await page.getTextContent();
-      const lines = buildLines(tc.items);
-      const imgs = await findImages(page);
-      imgs.forEach(im => lines.push({ image: true, page: p, y: im.top, size: 0, x: im.left, text: '\u0000img' + p + '_' + Math.round(im.top) }));
-      lines.sort((a, b) => b.y - a.y);
-      pages.push(lines);
+      pages.push(await pageLines(page, p, d));
     }
-    d.md = toMarkdown(pages);
+    try { d.md = toMarkdown(pages); }
+    catch (e) {
+      console.warn('Estructura no reconocida, se exporta texto plano', e);
+      d.md = pages.map(ls => ls.filter(l => !l.image).map(l => l.text.replace(/\u0000\S*/g, '')).filter(Boolean).join('\n\n')).join('\n\n---\n\n') + '\n';
+    }
     const words = d.md.split(/\s+/).filter(Boolean).length;
     d.meta = `${pdf.numPages} página(s) · ${words.toLocaleString('es')} palabras`;
     if (words < 5) { d.state = 'warn'; d.info = 'Sin texto (¿escaneado?)'; }
@@ -208,7 +256,7 @@ async function convertDoc(d) {
   } catch (e) {
     console.error(e);
     d.state = 'err'; d.md = '';
-    d.info = e.name === 'PasswordException' ? 'Protegido con contraseña' : 'No se pudo leer';
+    d.info = e.name === 'PasswordException' ? 'Protegido con contraseña' : 'No se pudo leer: ' + (e.message || e.name || e).toString().slice(0, 90);
   }
 }
 
@@ -253,44 +301,312 @@ function removeDoc(id) {
 $('btnClear').onclick = () => { if (busy) return; docs.length = 0; current = null; $('result').classList.remove('show'); $('status').className = 'status'; renderList(); };
 
 // Agrupa fragmentos de texto en líneas
-function buildLines(items) {
-  const rotated = items.filter(i => i.str && i.str.trim() && Math.abs(i.transform[1]) > Math.abs(i.transform[0]));
-  items = items.filter(i => !rotated.includes(i));
-  const frags = items.filter(i => i.str !== undefined).map(i => ({
-    str: i.str, x: i.transform[4], y: i.transform[5], w: i.width,
-    size: Math.hypot(i.transform[2], i.transform[3]) || i.height || 10, eol: i.hasEOL
-  })).filter(f => f.str.trim());
-  frags.sort((a, b) => b.y - a.y || a.x - b.x);
-  const lines = [];
+// Lee una página: tipos de letra, colores, líneas en orden de lectura e imágenes
+async function pageLines(page, p, d) {
+  let boxes = [], ops = null, rules = [];
+  try { ops = await page.getOperatorList(); boxes = findImages(ops); } catch (e) { console.warn('Imágenes no detectadas en pág.', p, e); }
+  try { if (ops) rules = findRules(ops); } catch (e) { console.warn('Líneas no detectadas en pág.', p, e); }
+  const tc = await page.getTextContent();
+  const fonts = {};
+  await Promise.all(Object.keys(tc.styles || {}).map(k => Promise.race([
+    new Promise(res => { try { page.commonObjs.get(k, f => res(f)); } catch (e) { res(null); } }),
+    new Promise(res => setTimeout(() => res(null), 1500))
+  ]).then(f => {
+    const n = (f && f.name) || '';
+    fonts[k] = {
+      bold: !!(f && (f.bold || f.black)) || /bold|black|heavy|semibold|demi|,b$/i.test(n),
+      italic: !!(f && f.italic) || /italic|oblique|,i$/i.test(n),
+      fam: fontFamily(n)
+    };
+  })));
+  const colors = ops ? colorize(tc.items, textColors(ops)) : [];
+  const lines = buildLines(tc.items, fonts, colors);
+  const view = page.view || [0, 0, 595, 842];
+  lines.pageW = view[2] - view[0]; lines.pageH = view[3] - view[1];
+  // Línea horizontal justo después de un texto en la misma altura (p. ej. «Fdo.: ______»)
+  rules.filter(r => r.h).forEach(r => {
+    const l = lines.find(t => !t.side && t.xe && Math.abs(t.y - r.y) < t.size * 0.9 && t.xe <= r.x1 + 3 && r.x1 - t.xe < 80);
+    if (!l) return;
+    const n = Math.max(3, Math.round((r.x2 - r.x1) / (l.size * 0.55))), last = l.segs[l.segs.length - 1];
+    l.segs.push({ ...last, t: ' ' + '_'.repeat(n), b: false, i: false });
+    l.text += ' ' + '_'.repeat(n); l.xe = r.x2; r.used = true;
+  });
+  lines.rules = rules.filter(r => !r.used);
+  let crops = [];
+  if (boxes.length && d && typeof document !== 'undefined') {
+    try { crops = await cropImages(page, boxes); } catch (e) { console.warn('No se pudieron recortar las imágenes de la pág.', p, e); }
+  }
+  boxes.map((im, k) => ({ im, k })).sort((a, b) => b.im.top - a.im.top).forEach(({ im, k }) => {
+    const img = { image: true, page: p, y: im.top, yb: im.bottom, size: 0, x: im.left, x2: im.right, text: '\u0000img' + p + '_' + Math.round(im.top) };
+    if (crops[k]) { img.id = d.id + '_' + p + '_' + k; d.images[img.id] = crops[k]; }
+    const at = lines.findIndex(l => l.side || l.y < im.top);
+    lines.splice(at < 0 ? lines.length : at, 0, img);
+  });
+  return lines;
+}
+
+// Líneas rectas dibujadas en la página: separadores, bordes de tabla y líneas de firma
+function findRules(ops) {
+  const O = pdfjsLib.OPS, res = [], stack = [];
+  let ctm = [1, 0, 0, 1, 0, 0], sc = '000000', fc = '000000', path = [];
+  const mul = (m, n) => [m[0]*n[0]+m[2]*n[1], m[1]*n[0]+m[3]*n[1], m[0]*n[2]+m[2]*n[3], m[1]*n[2]+m[3]*n[3], m[0]*n[4]+m[2]*n[5]+m[4], m[1]*n[4]+m[3]*n[5]+m[5]];
+  const pt = (x, y) => [ctm[0]*x + ctm[2]*y + ctm[4], ctm[1]*x + ctm[3]*y + ctm[5]];
+  const strokes = [O.stroke, O.closeStroke, O.fillStroke, O.eoFillStroke, O.closeFillStroke, O.closeEOFillStroke];
+  const fills = [O.fill, O.eoFill];
+  const add = (a, b, color) => {
+    if (/^f[a-f0-9]f[a-f0-9]f[a-f0-9]$/i.test(color)) return; // líneas blancas
+    if (Math.abs(a[1] - b[1]) < 1.5 && Math.abs(a[0] - b[0]) > 12) res.push({ h: true, x1: Math.min(a[0], b[0]), x2: Math.max(a[0], b[0]), y: (a[1] + b[1]) / 2, color });
+    else if (Math.abs(a[0] - b[0]) < 1.5 && Math.abs(a[1] - b[1]) > 6) res.push({ v: true, x: (a[0] + b[0]) / 2, y1: Math.min(a[1], b[1]), y2: Math.max(a[1], b[1]), color });
+  };
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    const fn = ops.fnArray[i], args = ops.argsArray[i];
+    if (fn === O.save) stack.push([ctm, sc, fc]);
+    else if (fn === O.restore) { const st = stack.pop(); if (st) [ctm, sc, fc] = st; }
+    else if (fn === O.transform) ctm = mul(ctm, args);
+    else if (fn === O.setStrokeRGBColor) sc = colorHex(args, sc);
+    else if (fn === O.setFillRGBColor) fc = colorHex(args, fc);
+    else if (fn === O.constructPath) {
+      const [list, a] = args; let k = 0, cur = [0, 0];
+      for (const op of list) {
+        if (op === O.rectangle) { const [x, y, w, h] = [a[k], a[k+1], a[k+2], a[k+3]]; k += 4; path.push({ rect: [pt(x, y), pt(x + w, y + h)] }); }
+        else if (op === O.moveTo) { cur = pt(a[k], a[k+1]); k += 2; }
+        else if (op === O.lineTo) { const p = pt(a[k], a[k+1]); k += 2; path.push({ seg: [cur, p] }); cur = p; }
+        else if (op === O.curveTo) { k += 6; path.push({ curve: true }); cur = pt(a[k-2], a[k-1]); }
+        else if (op === O.curveTo2 || op === O.curveTo3) { k += 4; path.push({ curve: true }); cur = pt(a[k-2], a[k-1]); }
+      }
+    }
+    else if (fn === O.endPath) path = [];
+    else if (strokes.includes(fn) || fills.includes(fn)) {
+      const stroke = strokes.includes(fn), color = stroke ? sc : fc;
+      if (!path.some(p => p.curve)) path.forEach(p => {
+        if (p.seg) { if (stroke) add(p.seg[0], p.seg[1], color); }
+        else if (p.rect) {
+          const [a, b] = p.rect, w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
+          const x1 = Math.min(a[0], b[0]), x2 = Math.max(a[0], b[0]), y1 = Math.min(a[1], b[1]), y2 = Math.max(a[1], b[1]);
+          if (h < 3 && w > 12) add([x1, (y1 + y2) / 2], [x2, (y1 + y2) / 2], color);
+          else if (w < 3 && h > 6) add([(x1 + x2) / 2, y1], [(x1 + x2) / 2, y2], color);
+          else if (stroke) { add([x1, y1], [x2, y1], color); add([x1, y2], [x2, y2], color); add([x1, y1], [x1, y2], color); add([x2, y1], [x2, y2], color); }
+        }
+      });
+      path = [];
+    }
+  }
+  return res;
+}
+function colorHex(a, def) {
+  if (!a) return def;
+  if (typeof a[0] === 'string') return a[0].replace('#', '').toLowerCase().slice(0, 6);
+  if (a[0] !== undefined && a[2] !== undefined) return [a[0], a[1], a[2]].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+  return def;
+}
+
+// Saca cada imagen tal cual está dentro del PDF (sin el texto o las líneas que tenga encima)
+async function imageFromPdf(page, box) {
+  let o = box.inline;
+  if (!o && box.name) o = await Promise.race([new Promise(r => { try { page.objs.get(box.name, r); } catch (e) { r(null); } }), new Promise(r => setTimeout(() => r(null), 4000))]);
+  if (!o) return null;
+  const c = document.createElement('canvas'), ctx = c.getContext('2d'); let alpha = false;
+  if (o.bitmap) { c.width = o.bitmap.width; c.height = o.bitmap.height; ctx.drawImage(o.bitmap, 0, 0); alpha = true; }
+  else if (o.data && o.width && o.height) {
+    c.width = o.width; c.height = o.height;
+    const id = ctx.createImageData(o.width, o.height), d = id.data, src = o.data, n = o.width * o.height;
+    if (o.kind === 3) { for (let i = 0; i < n * 4; i++) d[i] = src[i]; alpha = true; }
+    else if (o.kind === 2) for (let i = 0, j = 0; i < n; i++, j += 3) { d[i * 4] = src[j]; d[i * 4 + 1] = src[j + 1]; d[i * 4 + 2] = src[j + 2]; d[i * 4 + 3] = 255; }
+    else if (o.kind === 1) { const rb = (o.width + 7) >> 3; for (let y = 0; y < o.height; y++) for (let x = 0; x < o.width; x++) { const v = (src[y * rb + (x >> 3)] >> (7 - (x & 7))) & 1 ? 255 : 0, i = (y * o.width + x) * 4; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; } }
+    else return null;
+    ctx.putImageData(id, 0, 0);
+  } else return null;
+  let out = c;
+  if (box.flipX || box.flipY) {
+    out = document.createElement('canvas'); out.width = c.width; out.height = c.height;
+    const g = out.getContext('2d'); g.translate(box.flipX ? c.width : 0, box.flipY ? c.height : 0); g.scale(box.flipX ? -1 : 1, box.flipY ? -1 : 1); g.drawImage(c, 0, 0);
+  }
+  return { data: alpha ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', 0.9), w: box.right - box.left, h: box.top - box.bottom };
+}
+// Recorta las imágenes de la página renderizada para llevarlas al Word
+async function cropImages(page, boxes) {
+  const direct = await Promise.all(boxes.map(b => imageFromPdf(page, b).catch(() => null)));
+  if (direct.every(Boolean)) return direct;
+  const v1 = page.getViewport({ scale: 1 });
+  const vp = page.getViewport({ scale: Math.min(2, 2400 / Math.max(v1.width, v1.height)) });
+  const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+  const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return boxes.map((b, k) => {
+    if (direct[k]) return direct[k];
+    const [x1, y1, x2, y2] = vp.convertToViewportRectangle([b.left, b.bottom, b.right, b.top]);
+    const x = Math.max(0, Math.min(x1, x2)), y = Math.max(0, Math.min(y1, y2));
+    const w = Math.min(cv.width - x, Math.abs(x2 - x1)), h = Math.min(cv.height - y, Math.abs(y2 - y1));
+    if (w < 4 || h < 4) return null;
+    const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h);
+    c.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, c.width, c.height);
+    return { data: c.toDataURL('image/jpeg', 0.9), w: b.right - b.left, h: b.top - b.bottom };
+  }).map(x => x || null);
+}
+
+// Nombre de fuente del PDF → nombre de fuente para Word
+function fontFamily(n) {
+  n = (n || '').replace(/^[A-Z]{6}\+/, '').split(/[-,]/)[0].replace(/(PSMT|PS|MT|Std|Pro|LT)$/, '').replace(/(Bold|Italic|Oblique|Regular|Light|Medium|Semibold|Black|Roman)+$/i, '');
+  const map = { LiberationSans: 'Arial', LiberationSerif: 'Times New Roman', LiberationMono: 'Courier New', Helvetica: 'Arial', Arial: 'Arial', TimesNewRoman: 'Times New Roman', Times: 'Times New Roman', CourierNew: 'Courier New', Courier: 'Courier New', DejaVuSans: 'Verdana', DejaVuSerif: 'Georgia', Carlito: 'Calibri', Caladea: 'Cambria' };
+  if (map[n]) return map[n];
+  if (/^g_d\d|^$/.test(n) || /symbol|wingding|dingbat/i.test(n)) return '';
+  return n.replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+
+// Color de relleno vigente en cada carácter dibujado (en el orden del PDF)
+function textColors(ops) {
+  const O = pdfjsLib.OPS, out = [], stack = []; let color = '000000';
+  const hex = a => colorHex(a, color);
+  const shows = [O.showText, O.showSpacedText, O.nextLineShowText, O.nextLineSetSpacingShowText].filter(v => v !== undefined);
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    const fn = ops.fnArray[i], args = ops.argsArray[i];
+    if (fn === O.save) stack.push(color);
+    else if (fn === O.restore) color = stack.length ? stack.pop() : color;
+    else if (fn === O.setFillRGBColor) color = hex(args);
+    else if (shows.includes(fn)) {
+      const gl = args && args[fn === O.nextLineSetSpacingShowText ? 2 : 0];
+      if (Array.isArray(gl)) gl.forEach(g => { if (g && typeof g === 'object' && g.unicode) for (const ch of g.unicode.normalize('NFKC')) if (ch.trim()) out.push({ ch, c: color }); });
+    }
+  }
+  return out;
+}
+function colorize(items, stream) {
+  let k = 0;
+  return items.map(it => {
+    const cs = []; let last = k > 0 ? stream[k - 1].c : (stream[0] ? stream[0].c : null);
+    for (const ch of (it.str || '')) {
+      if (!ch.trim()) { cs.push(null); continue; }
+      const key = ch.normalize('NFKC');
+      let j = -1;
+      for (let t = k; t < Math.min(stream.length, k + 80); t++) if (stream[t].ch === key[0]) { j = t; break; }
+      if (j >= 0) { last = stream[j].c; k = j + key.length; }
+      cs.push(last);
+    }
+    return cs;
+  });
+}
+
+// Detecta zonas a dos columnas (también si la página mezcla texto a ancho completo)
+// y marca cada fragmento: 0 = ancho completo, 1 = columna izquierda, 2 = derecha
+function assignColumns(frags) {
+  frags.forEach(f => f.col = 0);
+  if (frags.length < 20) return;
+  const rows = [];
   for (const f of frags) {
-    let line = lines.find(l => Math.abs(l.y - f.y) < Math.max(l.size, f.size) * 0.5);
-    if (!line) { line = { y: f.y, size: f.size, frags: [] }; lines.push(line); }
+    const r = rows[rows.length - 1];
+    if (r && Math.abs(r.y - f.y) < f.size * 0.5) r.f.push(f); else rows.push({ y: f.y, f: [f] });
+  }
+  const minX = Math.min(...frags.map(f => f.x)), maxX = Math.max(...frags.map(f => f.x + f.w)), W = maxX - minX;
+  if (W < 200) return;
+  const fill = (ws, span) => { ws.sort((x, y) => x - y); return ws.length ? ws[Math.floor(ws.length / 2)] / span : 0; };
+  let best = null;
+  for (let g = minX + W * 0.3; g <= minX + W * 0.7; g += 2) {
+    const runs = []; let run = null;
+    rows.forEach((r, i) => {
+      if (r.f.some(f => f.x < g - 1 && f.x + f.w > g + 1)) { run = null; return; }
+      if (!run) runs.push(run = { a: i, b: i }); run.b = i;
+    });
+    // dentro de cada tramo, la columna derecha debe empezar siempre en el mismo sitio
+    const split = [];
+    runs.forEach(rn => {
+      const rx = rows.slice(rn.a, rn.b + 1).map(r => { const R = r.f.filter(f => f.x >= g - 1); return R.length ? Math.round(Math.min(...R.map(f => f.x))) : null; });
+      const cnt = {}; rx.forEach(x => { if (x !== null) cnt[x] = (cnt[x] || 0) + 1; });
+      const mode = +(Object.entries(cnt).sort((p, q) => q[1] - p[1])[0] || [NaN])[0];
+      let cur = null;
+      rx.forEach((x, k) => {
+        if (x !== null && Math.abs(x - mode) > 4) { cur = null; return; }
+        if (!cur) split.push(cur = { a: rn.a + k, b: rn.a + k }); cur.b = rn.a + k;
+      });
+    });
+    const ok = split.filter(rn => {
+      const rs = rows.slice(rn.a, rn.b + 1), wl = [], wr = [];
+      rs.forEach(r => {
+        const L = r.f.filter(f => f.x + f.w <= g + 1), R = r.f.filter(f => f.x >= g - 1);
+        if (L.length) wl.push(Math.max(...L.map(f => f.x + f.w)) - Math.min(...L.map(f => f.x)));
+        if (R.length) wr.push(Math.max(...R.map(f => f.x + f.w)) - Math.min(...R.map(f => f.x)));
+      });
+      // texto corrido en ambas columnas (si las celdas son cortas, es una tabla)
+      return wl.length >= 4 && wr.length >= 4 && fill(wl, g - minX) >= 0.6 && fill(wr, maxX - g) >= 0.6;
+    });
+    const score = ok.reduce((t, rn) => t + rn.b - rn.a + 1, 0);
+    if (score && (!best || score > best.score)) best = { g, runs: ok, score };
+  }
+  if (!best) return;
+  best.runs.forEach(rn => rows.slice(rn.a, rn.b + 1).forEach(r => r.f.forEach(f => f.col = f.x + f.w <= best.g + 1 ? 1 : 2)));
+}
+
+const BULLET_CH = /[\u2022\u25aa\u25a0\u25e6\u25cf\u25cb\u2023\u2043\u2219\u25ba\u25b6\u27a2\u2713\u2714\u2756\u25c6\u25c7\u2192\uf000-\uf0ff]/;
+function buildLines(items, fonts = {}, colors = []) {
+  const rotated = items.filter(i => i.str && i.str.trim() && Math.abs(i.transform[1]) > Math.abs(i.transform[0]));
+  const frags = [];
+  items.forEach((i, n) => {
+    if (i.str === undefined || !i.str.trim() || rotated.includes(i)) return;
+    const fo = fonts[i.fontName] || {};
+    const base = { x: i.transform[4], y: i.transform[5], font: i.fontName, bold: !!fo.bold, italic: !!fo.italic, fam: fo.fam || '',
+      size: Math.hypot(i.transform[2], i.transform[3]) || i.height || 10 };
+    // si dentro del mismo fragmento cambia el color, se parte en trozos
+    const cs = colors[n] || [], chars = [...i.str], runs = [];
+    let cur = null;
+    chars.forEach((ch, k) => {
+      const c = cs[k] === undefined ? null : cs[k];
+      if (!cur || (c !== null && cur.c !== null && c !== cur.c)) runs.push(cur = { a: k, b: k + 1, c, t: ch });
+      else { cur.b = k + 1; cur.t += ch; if (cur.c === null) cur.c = c; }
+    });
+    runs.forEach(r => {
+      if (!r.t.trim()) return;
+      frags.push({ ...base, str: r.t, color: r.c || '000000', x: base.x + i.width * r.a / chars.length, w: i.width * (r.b - r.a) / chars.length });
+    });
+  });
+  frags.sort((a, b) => b.y - a.y || a.x - b.x);
+  assignColumns(frags);
+  const twoCols = frags.some(f => f.col);
+  let lines = [];
+  for (const f of frags) {
+    let line = lines.find(l => l.col === f.col && Math.abs(l.y - f.y) < Math.max(l.size, f.size) * 0.5);
+    if (!line) { line = { y: f.y, size: f.size, col: f.col, frags: [] }; lines.push(line); }
     line.frags.push(f); line.size = Math.max(line.size, f.size);
   }
   lines.sort((a, b) => b.y - a.y);
+  if (twoCols) { // orden de lectura: columna izquierda entera y después la derecha
+    const out = []; let L = [], R = [];
+    for (const l of lines) { if (l.col === 0) { out.push(...L, ...R, l); L = []; R = []; } else (l.col === 1 ? L : R).push(l); }
+    lines = out.concat(L, R);
+  }
   return lines.map(l => {
     l.frags.sort((a, b) => a.x - b.x);
-    let text = '', end = null;
-    const cells = [];
+    const bx = l.frags[0].x;
+    // viñeta (incluidas las de fuentes Symbol/Wingdings que llegan como caracteres privados)
+    let bullet = false;
+    const f0 = l.frags[0], f1 = l.frags[1], s0 = f0.str.trim(), c0 = s0[0];
+    if (BULLET_CH.test(c0) || (f1 && s0.length === 1 && /[-–*·o]/.test(c0) && (c0 !== 'o' || f0.font !== f1.font))) {
+      bullet = true; f0.str = s0.slice(1);
+      if (!f0.str.trim()) l.frags.shift();
+    }
+    if (!l.frags.length) return null;
+    let plain = '', end = null, tot = 0, bold = 0;
+    const cells = [], segs = [];
     for (const f of l.frags) {
       const gapX = end === null ? 0 : f.x - end;
-      if (end === null || (gapX > l.size * 0.8 && f.str.trim())) cells.push({ x: f.x, text: '' });
+      if (end === null || gapX > l.size * 0.8) cells.push({ x: f.x, text: '' });
       else if (gapX > l.size * 0.15 && !cells[cells.length - 1].text.endsWith(' ') && !f.str.startsWith(' ')) cells[cells.length - 1].text += ' ';
-      if (end !== null && gapX > l.size * 0.15 && !text.endsWith(' ') && !f.str.startsWith(' ')) text += ' ';
+      const sp = end !== null && gapX > l.size * 0.15 && !plain.endsWith(' ') && !f.str.startsWith(' ') ? ' ' : '';
+      plain += sp + f.str;
+      segs.push({ t: sp + f.str, b: f.bold, i: f.italic, c: f.color, s: Math.round(f.size * 2) / 2, f: f.fam });
       cells[cells.length - 1].text += f.str;
-      text += f.str; end = Math.max(end ?? -1e9, f.x + f.w);
+      const n = f.str.replace(/\s/g, '').length; tot += n; if (f.bold) bold += n;
+      end = Math.max(end ?? -1e9, f.x + f.w);
     }
     cells.forEach(c => c.text = c.text.replace(/\s+/g, ' ').trim());
-    // size predominante (por nº de caracteres)
     const sizes = {}; l.frags.forEach(f => { const k = Math.round(f.size); sizes[k] = (sizes[k] || 0) + f.str.length; });
     const size = +Object.entries(sizes).sort((a, b) => b[1] - a[1])[0][0];
-    return { text: text.replace(/\s+/g, ' ').trim(), y: l.y, size, x: l.frags[0].x, cells: cells.filter(c => c.text), parts: l.frags.map(f => ({ x: f.x, text: f.str.trim() })) };
-  }).filter(l => l.text).concat(rotated.length ? [{ text: rotated.map(i => i.str.trim()).join(' · '), y: -1e6, size: 0, x: 0, cells: [], side: true }] : []);
+    return { text: plain.replace(/\s+/g, ' ').trim(), segs, y: l.y, size, x: bx, tx: l.frags[0].x, xe: end, col: l.col,
+      bold: tot > 0 && bold / tot >= 0.8, bullet, cells: cells.filter(c => c.text), parts: l.frags.map(f => ({ x: f.x, xe: f.x + f.w, text: f.str.trim(), seg: { b: f.bold, i: f.italic, c: f.color, s: Math.round(f.size * 2) / 2, f: f.fam } })) };
+  }).filter(l => l && l.text).concat(rotated.length ? [{ text: rotated.map(i => i.str.trim()).join(' · '), y: -1e6, size: 0, x: 0, cells: [], side: true }] : []);
 }
 
 // Localiza imágenes (fotos) en la página siguiendo la matriz de transformación
-async function findImages(page) {
-  const O = pdfjsLib.OPS, ops = await page.getOperatorList();
+function findImages(ops) {
+  const O = pdfjsLib.OPS;
   const mul = (m, n) => [m[0]*n[0]+m[2]*n[1], m[1]*n[0]+m[3]*n[1], m[0]*n[2]+m[2]*n[3], m[1]*n[2]+m[3]*n[3], m[0]*n[4]+m[2]*n[5]+m[4], m[1]*n[4]+m[3]*n[5]+m[5]];
   let ctm = [1,0,0,1,0,0]; const stack = [], found = [];
   const paint = [O.paintImageXObject, O.paintInlineImageXObject, O.paintImageXObjectRepeat, O.paintJpegXObject].filter(v => v !== undefined);
@@ -302,13 +618,14 @@ async function findImages(page) {
     else if (fn === O.paintFormXObjectBegin) { stack.push(ctm); if (args && args[0]) ctm = mul(ctm, args[0]); }
     else if (fn === O.paintFormXObjectEnd) ctm = stack.pop() || [1,0,0,1,0,0];
     else if (paint.includes(fn)) {
+      const ref = args && args[0], name = typeof ref === 'string' ? ref : null, inline = ref && typeof ref === 'object' ? ref : null;
       const pts = [[0,0],[1,0],[0,1],[1,1]].map(([x, y]) => [ctm[0]*x + ctm[2]*y + ctm[4], ctm[1]*x + ctm[3]*y + ctm[5]]);
       const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
       const box = { left: Math.min(...xs), right: Math.max(...xs), bottom: Math.min(...ys), top: Math.max(...ys) };
-      if (box.right - box.left < 60 || box.top - box.bottom < 60) continue; // iconos o adornos
+      if (box.right - box.left < 16 || box.top - box.bottom < 16) continue; // adornos diminutos
       const dup = found.find(b => b.bottom < box.top && box.bottom < b.top && b.left < box.right && box.left < b.right);
-      if (dup) { Object.assign(dup, { left: Math.min(dup.left, box.left), right: Math.max(dup.right, box.right), bottom: Math.min(dup.bottom, box.bottom), top: Math.max(dup.top, box.top) }); }
-      else found.push(box);
+      if (dup) { Object.assign(dup, { name: null, inline: null, left: Math.min(dup.left, box.left), right: Math.max(dup.right, box.right), bottom: Math.min(dup.bottom, box.bottom), top: Math.max(dup.top, box.top) }); }
+      else found.push(Object.assign(box, { name, inline, flipX: ctm[0] < 0, flipY: ctm[3] < 0 }));
     }
   }
   return found;
@@ -316,7 +633,8 @@ async function findImages(page) {
 
 // Agrupa líneas consecutivas con varias celdas alineadas en tablas
 function detectTables(lines) {
-  const isMulti = l => l && !l.image && !l.side && l.cells && l.cells.length >= 2;
+  const marker = /^((\d{1,3}|[a-z])[.)]|[•·▪■◦●○–-])$/i;
+  const isMulti = l => l && !l.image && !l.side && !l.bullet && l.cells && l.cells.length >= 2 && !(l.cells.length === 2 && marker.test(l.cells[0].text));
   const aligned = (l, ref, tol) => l.cells.filter(c => ref.cells.some(r => Math.abs(r.x - c.x) <= tol)).length >= Math.ceil(l.cells.length * 0.6);
   const out = []; let i = 0;
   while (i < lines.length) {
@@ -326,7 +644,7 @@ function detectTables(lines) {
     let j = i + 1, lastMulti = first;
     while (j < lines.length) {
       const l = lines[j], pr = lines[j - 1];
-      if (l.image || l.side || pr.y - l.y > Math.max(l.size, pr.size) * 2.6) break;
+      if (l.image || l.side || l.col !== pr.col || pr.y - l.y < 0 || pr.y - l.y > Math.max(l.size, pr.size) * 2.6) break;
       const maxLen = r => Math.max(...r.cells.map(c => c.text.length));
       if (isMulti(l) && maxLen(l) > maxLen(lastMulti) * 2 + 10) break;
       if (isMulti(l) && aligned(l, lastMulti, tol)) { lastMulti = l; j++; continue; }
@@ -345,27 +663,36 @@ function detectTables(lines) {
     if (multi.length < 2 || cols.length < 2 || (cols.length === 2 && avgLen > 60)) { out.push(first); i++; continue; }
     const rows = [];
     group.forEach(l => {
-      const row = cols.map(() => '');
-      l.parts.forEach(c => { let k = 0; cols.forEach((cx, idx) => { if (c.x >= cx - ctol * 0.5) k = idx; }); row[k] = (row[k] ? row[k] + ' ' : '') + c.text; });
-      if (rows.length > 1 && !row[0]) row.forEach((t, k) => { if (t) rows[rows.length - 1][k] += ' ' + t; });
+      const row = cols.map(() => []);
+      l.parts.forEach(c => { let k = 0; cols.forEach((cx, idx) => { if (c.x >= cx - ctol * 0.5) k = idx; }); row[k].push(c); });
+      if (rows.length > 1 && !row[0].length) row.forEach((t, k) => { if (t.length) rows[rows.length - 1][k].push(...t); });
       else rows.push(row);
     });
     // fusionar columnas vecinas que nunca coinciden en la misma fila (cabecera desplazada)
     for (let k = cols.length - 2; k >= 0; k--) {
-      if (cols[k + 1] - cols[k] <= first.size * 2.5 && !rows.some(r => r[k] && r[k + 1])) {
-        rows.forEach(r => { r[k] = r[k] || r[k + 1]; r.splice(k + 1, 1); }); cols.splice(k + 1, 1);
+      if (cols[k + 1] - cols[k] <= first.size * 2.5 && !rows.some(r => r[k].length && r[k + 1].length)) {
+        rows.forEach(r => { r[k] = r[k].length ? r[k] : r[k + 1]; r.splice(k + 1, 1); }); cols.splice(k + 1, 1);
       }
     }
     // quitar columnas totalmente vacías
-    const keep = cols.map((_, k) => rows.some(r => r[k]));
-    out.push({ table: true, rows: rows.map(r => r.filter((_, k) => keep[k])), y: first.y, size: first.size, text: '\u0000tbl' });
+    const keep = cols.map((_, k) => rows.some(r => r[k].length));
+    const kc = cols.filter((_, k) => keep[k]), right = Math.max(...group.map(l => l.xe || 0));
+    const widths = kc.map((x, k) => Math.max(1, (k + 1 < kc.length ? kc[k + 1] : right) - x));
+    out.push({ table: true, rows: rows.map(r => r.filter((_, k) => keep[k])), widths, y: first.y, yBot: group[group.length - 1].y, x1: kc[0], x2: right, size: first.size, text: '\u0000tbl' });
     i = j;
   }
   return out;
 }
 
 function toMarkdown(pages) {
+  const keep = $('optFmt').checked;
+  const pageW = (pages[0] && pages[0].pageW) || 595, pageH = (pages[0] && pages[0].pageH) || 842;
   const norm = t => t.replace(/\d+/g, '#').toLowerCase();
+  // Texto del margen inferior: va al pie de página del Word
+  const isFoot = (l, ls) => !l.image && !l.side && l.y < (ls.pageH || pageH) * 0.075 && l.y > 0;
+  const footLines = (pages[0] || []).filter(l => isFoot(l, pages[0]));
+  const rulesOf = pages.map(ls => ls.rules || []);
+  pages = pages.map(ls => ls.filter(l => !isFoot(l, ls)));
   // Encabezados/pies repetidos
   if ($('optHF').checked && pages.length > 2) {
     const count = {};
@@ -376,69 +703,233 @@ function toMarkdown(pages) {
     const rep = new Set(Object.keys(count).filter(k => count[k] >= Math.max(3, pages.length * 0.5)));
     pages = pages.map(ls => ls.filter((l, i) => !((i < 2 || i >= ls.length - 2) && (rep.has(norm(l.text)) || /^(p[áa]g(ina)?\.?\s*)?\d+(\s*(de|\/)\s*\d+)?$/i.test(l.text)))));
   }
+  const all = pages.flat().filter(l => !l.image && !l.side);
   // Tamaño de cuerpo
   const hist = {};
-  pages.flat().forEach(l => { if (!l.image && !l.side) hist[l.size] = (hist[l.size] || 0) + l.text.length; });
+  all.forEach(l => hist[l.size] = (hist[l.size] || 0) + l.text.length);
   const body = +(Object.entries(hist).sort((a, b) => b[1] - a[1])[0] || [10])[0];
+  // Formato predominante del texto (fuente, tamaño exacto y color)
+  const famC = {}, colC = {}, sizC = {};
+  all.forEach(l => (l.segs || []).forEach(s => { const n = s.t.replace(/\s/g, '').length; if (s.f) famC[s.f] = (famC[s.f] || 0) + n; colC[s.c] = (colC[s.c] || 0) + n; sizC[s.s] = (sizC[s.s] || 0) + n; }));
+  const top = (o, def) => (Object.entries(o).sort((a, b) => b[1] - a[1])[0] || [def])[0];
+  const defFam = top(famC, ''), defCol = top(colC, '000000'), bodyS = +top(sizC, body);
+  const rgb = h => [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) || 0);
+  const near = (a, b) => { const x = rgb(a), y = rgb(b); return Math.abs(x[0] - y[0]) + Math.abs(x[1] - y[1]) + Math.abs(x[2] - y[2]) < 60; };
+
+  // Interlineado habitual del documento (para distinguir línea siguiente de párrafo nuevo)
+  const gh = {};
+  pages.forEach(ls => ls.forEach((l, i) => {
+    const p = ls[i - 1];
+    if (!p || p.image || l.image || p.side || l.side || p.col !== l.col || Math.abs(p.size - l.size) > 0.5) return;
+    const r = (p.y - l.y) / l.size;
+    if (r > 0.8 && r < 3) { const k = Math.round(r * 20); gh[k] = (gh[k] || 0) + 1; }
+  }));
+  const lineR = +(Object.entries(gh).sort((a, b) => b[1] - a[1])[0] || [24])[0] / 20;
+  let totC = 0, boldC = 0;
+  all.forEach(l => { totC += l.text.length; if (l.bold) boldC += l.text.length; });
+  const useBold = boldC < totC * 0.4; // si casi todo es negrita, no sirve para detectar títulos
+  const isCaps = t => { const s = t.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g, ''); return s.length >= 4 && s === s.toUpperCase(); };
+
+  // Márgenes y alineación del texto
+  const pct = (a, q) => { a = a.slice().sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * q))] : 0; };
+  const main = all.filter(l => l.col === 0 && l.xe);
+  const L0 = pct(main.map(l => l.x), 0.05), R0 = pct(main.map(l => l.xe), 0.95);
+  const longL = main.filter(l => l.text.length > 50);
+  const rx = Math.max(R0, pct(main.map(l => l.xe), 0.99), ...rulesOf.flat().filter(r => r.h && r.x2 - r.x1 > (R0 - L0) * 0.6).map(r => r.x2));
+  const justified = longL.length > 3 && longL.filter(l => l.xe >= R0 - 3).length / longL.length > 0.55;
+
+  // Texto de una línea con su formato (negrita, cursiva, color, tamaño, fuente)
+  const render = (l, skip = 0, noBold = false) => {
+    if (!l.segs) return l.text.slice(skip);
+    const chars = [];
+    l.segs.forEach(s => { for (const ch of s.t) { const sp = /\s/.test(ch); if (sp && (!chars.length || chars[chars.length - 1].ch === ' ')) continue; chars.push({ ch: sp ? ' ' : ch, s }); } });
+    while (chars.length && chars[chars.length - 1].ch === ' ') chars.pop();
+    const cs = chars.slice(skip);
+    while (cs.length && cs[0].ch === ' ') cs.shift();
+    const style = s => {
+      const css = [];
+      if (keep) {
+        if (s.c && !near(s.c, defCol)) css.push('color:#' + s.c);
+        if (Math.abs(s.s - bodyS) >= 0.75) css.push('font-size:' + s.s + 'pt');
+        if (s.f && defFam && s.f !== defFam) css.push("font-family:'" + s.f + "'");
+      }
+      return { b: s.b && !noBold, i: s.i, css: css.join(';') };
+    };
+    const groups = [];
+    cs.forEach(c => {
+      const st = style(c.s), k = st.b + '|' + st.i + '|' + st.css, g = groups[groups.length - 1];
+      if (g && (g.k === k || c.ch === ' ')) g.t += c.ch; else groups.push({ k, st, t: c.ch });
+    });
+    return groups.map(g => {
+      const m = g.t.match(/^(\s*)([\s\S]*?)(\s*)$/), core = m[2].replace(/\*/g, '\\*');
+      if (!core) return g.t;
+      const { b, i, css } = g.st;
+      return m[1] + (css ? `<span style="${css}">` : '') + (b ? '**' : '') + (i ? '*' : '') + core + (i ? '*' : '') + (b ? '**' : '') + (css ? '</span>' : '') + m[3];
+    }).join('');
+  };
 
   const blocks = [];
-  const bullet = /^[•·▪■◦●○‣⁃–\-*]\s*/;
+  const bullet = /^([•·▪■◦●○‣⁃]\s*|[–\-*]\s+)/;
   const numbered = /^(\d{1,3}|[a-z])[.)]\s+/i;
+  const ends = /[.:!?;»”)]$/;
+  let para = null, prev = null;
+  const extras = [], contR = [], hgaps = [];
+  const flush = () => { if (para) { blocks.push(para); para = null; } };
+  const lineColor = l => { const c = {}; (l.segs || []).forEach(s => c[s.c] = (c[s.c] || 0) + s.t.length); return top(c, defCol); };
+  const cellMd = parts => render({ text: parts.map(p => p.text).join(' ').replace(/\s+/g, ' ').trim(), segs: parts.map((p, i) => ({ t: (i ? ' ' : '') + p.text, ...p.seg })) });
+  const start = (type, l, skip, extra = {}) => { flush(); para = { type, text: l.text.slice(skip), md: render(l, skip), x: l.x, tx: l.tx, center: l.center, ...extra }; };
 
   pages.forEach((rawLines, pi) => {
     const lines = detectTables(rawLines);
-    if (pi > 0 && $('optPages').checked) blocks.push({ type: 'hr' });
-    let para = null, prev = null;
-    const flush = () => { if (para) { blocks.push(para); para = null; } };
+    const rules = rulesOf[pi].filter(r => r.y > pageH * 0.075);
+    lines.forEach(t => {
+      if (!t.table) return;
+      const inside = r => (r.h ? r.y > t.yBot - t.size * 1.4 && r.y < t.y + t.size * 1.6 && r.x2 > t.x1 && r.x1 < t.x2
+                               : r.x > t.x1 - t.size * 2 && r.x < t.x2 + t.size * 2 && r.y2 > t.yBot - t.size && r.y1 < t.y + t.size);
+      const own = rules.filter(inside);
+      t.border = own.length ? own[0].color : null;
+      const xs = own.map(r => r.h ? r.x2 : r.x);
+      if (xs.length) t.bx2 = Math.max(...xs);
+      own.forEach(r => r.used = true);
+    });
+    // Separadores horizontales largos (no tablas) se intercalan por altura
+    rules.filter(r => r.h && !r.used && r.x2 - r.x1 > 100).sort((a, b) => b.y - a.y).forEach(r => {
+      const at = lines.findIndex(l => !l.side && l.y < r.y);
+      lines.splice(at < 0 ? lines.length : at, 0, { rule: true, y: r.y, color: r.color, x1: r.x1, x2: r.x2, text: '\u0000rule' });
+    });
+    const left = {}, right = {};
+    lines.forEach(l => { if (l.xe) { right[l.col] = Math.max(right[l.col] || 0, l.xe); left[l.col] = Math.min(left[l.col] ?? 1e9, l.x); } });
+    const centered = l => {
+      if (!l.xe) return false;
+      const L = l.col ? left[l.col] : L0, R = l.col ? right[l.col] : rx, lm = l.x - L, rm = R - l.xe;
+      return lm > l.size * 2 && rm > l.size * 2 && Math.abs(lm - rm) < Math.max(l.size * 1.5, (R - L) * 0.04);
+    };
+    if (pi > 0 && $('optPages').checked) { flush(); prev = null; blocks.push({ type: 'hr' }); }
     for (const l of lines) {
-      if (l.image) { flush(); blocks.push({ type: 'img', page: l.page }); prev = null; continue; }
-      if (l.side) { flush(); blocks.push({ type: 'p', text: l.text }); prev = null; continue; }
-      if (l.table) { flush(); blocks.push({ type: 'table', rows: l.rows }); prev = null; continue; }
+      if (l.image) {
+        flush(); const lm = l.x - L0, rm = rx - (l.x2 || l.x);
+        let align = Math.abs(lm - rm) < (rx - L0) * 0.15 ? '' : lm < rm ? 'izquierda' : 'derecha';
+        // texto a la derecha de la imagen, a su misma altura → la imagen flota y el texto la rodea
+        const side = lines.filter(t => !t.image && !t.table && !t.rule && t.xe && t.x >= l.x2 - 2 && t.y < l.y && t.y > l.yb);
+        if (side.length && align === 'izquierda') {
+          // en Word las líneas ocupan algo más: se reserva espacio para que todo el texto lateral quede al lado
+          const low = Math.min(...side.map(t => t.y - t.size * 0.3)), span = l.y - low;
+          align = `izquierda flotante ${Math.round(Math.min(...side.map(t => t.x)) - l.x2)} ${Math.round(l.x - L0)} ${Math.round(Math.max(0, l.yb - low) + span * 0.45)}`;
+        }
+        blocks.push({ type: 'img', page: l.page, id: l.id, align }); prev = null; continue;
+      }
+      if (l.rule) { flush(); blocks.push({ type: 'rule', color: l.color }); prev = null; continue; }
+      if (l.side) { flush(); blocks.push({ type: 'p', text: l.text, md: l.text }); prev = null; continue; }
+      if (l.table) { flush(); blocks.push({ type: 'table', rows: l.rows.map(r => r.map(cellMd)), widths: l.widths, border: l.border, x1: l.x1, x2: l.bx2 || l.x2 }); prev = null; continue; }
+      l.pg = pi; l.center = centered(l);
       const r = l.size / body;
-      const gap = prev ? prev.y - l.y : 0;
-      if ($('optHead').checked && r >= 1.12 && l.text.length < 150) {
-        const lvl = r >= 1.6 ? 1 : r >= 1.3 ? 2 : 3;
+      const jump = prev && (prev.pg !== pi || prev.y - l.y < 0); // salto de página o de columna
+      const gap = prev && !jump ? prev.y - l.y : 0;
+      const normalGap = gap <= lineR * l.size * 1.2 + 0.5;
+      const midSentence = para && para.type === 'p' && !ends.test(para.text);
+      const boldHead = useBold && l.bold && l.text.length < 120 && !/[,;:]$/.test(l.text) && !(midSentence && prev && !jump && normalGap);
+      if ($('optHead').checked && !l.bullet && l.text.length < 150 && (r >= 1.12 || boldHead)) {
+        const lvl = Math.round(l.size * 10) * 2 + (isCaps(l.text) ? 1 : 0); // provisional: se ordena al final
         const last = blocks[blocks.length - 1];
         flush();
-        if (last && last.type === 'h' && last.lvl === lvl && prev && prev.size === l.size && gap < l.size * 1.8) last.text += ' ' + l.text;
-        else blocks.push({ type: 'h', lvl, text: l.text });
+        if (last && last.type === 'h' && last.lvl === lvl && prev && !jump && prev.size === l.size && gap < l.size * 1.8) { last.md += ' ' + render(l, 0, true); last.center = last.center && l.center; }
+        else { if (prev && !jump && gap > 0) hgaps.push({ gap, size: l.size }); blocks.push({ type: 'h', lvl, md: render(l, 0, true), center: l.center }); }
         prev = l; continue;
       }
-      if (bullet.test(l.text) && l.text.length > 1) {
-        flush(); para = { type: 'li', text: l.text.replace(bullet, ''), x: l.x };
-      } else if (numbered.test(l.text) && /^\d/.test(l.text)) {
-        flush(); para = { type: 'ol', num: l.text.match(/^\d+/)[0], text: l.text.replace(numbered, ''), x: l.x };
-      } else if (para && prev && gap < l.size * 1.75 && !(para.type !== 'p' && l.x < para.x - 2)) {
-        para.text = para.text.endsWith('-') && /^[a-záéíóúñü]/.test(l.text) ? para.text.slice(0, -1) + l.text : para.text + ' ' + l.text;
-      } else {
-        flush(); para = { type: 'p', text: l.text };
+      let cont = false;
+      if (para && prev) {
+        if (jump) cont = !ends.test(para.text) && /^[a-záéíóúñü(«"]/.test(l.text);
+        else if (!normalGap) cont = false;
+        else if (prev.bold !== l.bold || !near(lineColor(prev), lineColor(l))) cont = false; // cambia el estilo de la línea
+        else if (prev.xe < (right[prev.col] || 0) - prev.size * 8 && /^[A-ZÁÉÍÓÚÑ0-9¿¡«"(]/.test(l.text) && !(para.center && l.center)) cont = false; // línea anterior muy corta
+        else if (ends.test(prev.text) && prev.xe < (right[prev.col] || 0) - prev.size * 5 && !(para.center && l.center)) cont = false; // línea anterior corta que cierra frase
+        else if (para.type !== 'p') cont = Math.abs(l.x - para.tx) < 3 || Math.abs(l.x - para.x) < 3;
+        else if (para.center || l.center) cont = para.center && l.center;
+        else cont = !(l.x > prev.x + l.size); // sangría de primera línea
       }
+      if (!cont && prev && !jump && gap > 0) extras.push({ gap, size: l.size });
+      const bm = l.text.match(bullet), nm = l.text.match(numbered);
+      if (l.bullet || bm) start('li', l, bm && !l.bullet ? bm[0].length : 0);
+      else if (nm && /^\d/.test(l.text)) start('ol', l, nm[0].length, { num: l.text.match(/^\d+/)[0], numBold: !!(l.segs[0] && l.segs[0].b), tx: l.parts.length > 1 && /^\d+[.)]$/.test(l.parts[0].text) ? l.parts[1].x : l.tx });
+      else if (/^[a-z]\)\s/i.test(l.text)) start('p', l, 0);
+      else if (cont) {
+        if (!jump && gap > 0) contR.push(gap / l.size);
+        const t = render(l);
+        if (para.text.endsWith('-') && /^[a-záéíóúñü]/.test(l.text)) { para.text = para.text.slice(0, -1) + l.text; para.md = para.md.replace(/-((?:\*+|<\/span>)*)$/, '$1') + t; }
+        else { para.text += ' ' + l.text; para.md += ' ' + t; }
+        para.center = para.center && l.center;
+      }
+      else start('p', l, 0);
       prev = l;
     }
-    flush();
   });
+  flush();
+  // Niveles de título: el tamaño mayor es #, el siguiente ##, el resto ###
+  const keys = [...new Set(blocks.filter(b => b.type === 'h').map(b => b.lvl))].sort((a, b) => b - a);
+  blocks.forEach(b => { if (b.type === 'h') b.lvl = Math.min(3, keys.indexOf(b.lvl) + 1); });
 
   const esc = t => t.replace(/^(#+|>|\d+\.)(\s)/, '\\$1$2');
-  let out = '', lastType = null;
+  const ctr = (b, t) => b.center ? '->' + t + '<-' : t;
+  let out = '', lastType = null, base = 0;
+  if (keep) {
+    const med = a => { a = a.slice().sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; };
+    const lr = contR.length >= 2 ? med(contR) : Math.min(lineR, 1.2);
+    const sp = Math.min(3, Math.max(1, Math.round(lr / 1.15 * 20) / 20));
+    const mL = Math.round(Math.min(150, Math.max(20, L0))), mR = Math.round(Math.min(150, Math.max(20, pageW - rx)));
+    const ex = extras.map(e => e.gap - lr * e.size), esp = ex.length ? Math.min(24, Math.max(0, Math.round(med(ex)))) : 6;
+    const hx = hgaps.map(e => e.gap - lr * e.size), espT = hx.length ? Math.min(36, Math.max(0, Math.round(med(hx)))) : esp * 2;
+    const fl = blocks.find(b => b.type === 'ol' || b.type === 'li');
+    const lista = fl ? `; lista=${Math.round(Math.max(0, fl.x - L0))},${Math.round(Math.max(fl.tx - L0, fl.x - L0 + 12))}${fl.numBold ? ',negrita' : ''}` : '';
+    const p0 = pages[0] || [], topY = Math.max(0, ...p0.filter(l => !l.side).map(l => l.image ? l.y : l.y + l.size));
+    const mT = Math.round(Math.min(100, Math.max(20, pageH - topY - 4)));
+    const fy = footLines.length ? Math.min(...footLines.map(l => l.y)) : 0;
+    const mB = fy ? Math.round(Math.max(36, fy + 24)) : 71, mF = fy ? Math.round(Math.max(10, fy - 4)) : 35;
+    out = `<!-- formato: fuente=${defFam || 'Calibri'}; tamaño=${bodyS}; color=${defCol}; interlineado=${sp}; espacio=${esp}; espacio_titulo=${espT}${lista}; alineación=${justified ? 'justificada' : 'izquierda'}; página=${Math.round(pageW)}x${Math.round(pageH)}; márgenes=${mL},${mR},${mT},${mB}; pie=${mF} -->`;
+  }
   for (const b of blocks) {
-    const listy = b.type === 'li' || b.type === 'ol';
-    if (out) out += (listy && (lastType === 'li' || lastType === 'ol')) ? '\n' : '\n\n';
+    const listy = b.type === 'li' || b.type === 'ol', inList = lastType === 'li' || lastType === 'ol';
+    if (out) out += (listy && inList) ? '\n' : '\n\n';
+    if (listy) { if (!inList) base = b.x; out += b.x > base + 6 ? '    ' : ''; }
     if (b.type === 'hr') out += '---';
-    else if (b.type === 'h') out += '#'.repeat(b.lvl) + ' ' + b.text;
-    else if (b.type === 'li') out += '- ' + b.text;
-    else if (b.type === 'ol') out += b.num + '. ' + b.text;
-    else if (b.type === 'img') out += `*[Aquí viene foto de la página ${b.page}]*`;
+    else if (b.type === 'h') out += '#'.repeat(b.lvl) + ' ' + ctr(b, b.md);
+    else if (b.type === 'li') out += '- ' + b.md;
+    else if (b.type === 'ol') out += b.num + '. ' + b.md;
+    else if (b.type === 'img') out += b.id ? `![Imagen de la página ${b.page}](img:${b.id}${b.align ? ` "${b.align}"` : ''})` : `*[Aquí viene foto de la página ${b.page}]*`;
+    else if (b.type === 'rule') out += `<hr style="color:#${b.color}">`;
     else if (b.type === 'table') {
       const cell = t => (t || ' ').replace(/\|/g, '\\|');
+      const ws = b.widths.slice(), end = b.x1 + ws.slice(0, -1).reduce((a, w) => a + w, 0);
+      ws[ws.length - 1] = Math.max(ws[ws.length - 1], (b.border ? b.x2 : rx) - end);
+      out += `<!-- tabla: bordes=${b.border || 'no'}; anchos=${ws.map(Math.round).join(',')}pt -->\n`;
       out += b.rows.map((r, k) => '| ' + r.map(cell).join(' | ') + ' |' + (k === 0 ? '\n|' + r.map(() => ' --- ').join('|') + '|' : '')).join('\n');
     }
-    else out += esc(b.text);
+    else out += ctr(b, esc(b.md));
     lastType = b.type;
+  }
+  if (footLines.length) {
+    const f = footLines.sort((a, b) => b.y - a.y).map(l => {
+      const cs = l.cells.length > 1 ? l.cells.map((c, k) => cellMd(l.parts.filter(p => p.x >= c.x - 0.5 && (k + 1 >= l.cells.length || p.x < l.cells[k + 1].x - 0.5)))) : null;
+      return cs ? cs.join('\t') : render(l);
+    });
+    out += '\n\n<!-- pie -->\n' + f.join('\n\n') + '\n<!-- /pie -->';
   }
   return out.trim() + '\n';
 }
 
-function renderPreview() { $('preview').innerHTML = marked.parse($('out').value); }
+// Las imágenes van en el Markdown como img:ID; para verlas o descargarlas se cambian por la imagen real
+const curDoc = () => docs.find(x => x.id === current);
+function withImages(md, d, placeholder = false) {
+  return md.replace(/!\[([^\]]*)\]\(img:([\w-]+)\)/g, (m, alt, id) => d && d.images && d.images[id] ? (placeholder ? `*[${alt}]*` : `![${alt}](${d.images[id].data})`) : m);
+}
+function renderPreview() {
+  const md = $('out').value, fmt = readFormat(md), pv = $('preview');
+  pv.style.fontFamily = fmt ? `'${fmt.font}', system-ui, sans-serif` : '';
+  pv.style.fontSize = fmt ? fmt.size + 'pt' : '';
+  pv.style.color = fmt ? '#' + fmt.color : '';
+  pv.style.textAlign = fmt && fmt.justify ? 'justify' : '';
+  pv.innerHTML = marked.parse(withImages(md, curDoc()))
+    .replace(/<(p|h[1-6])>(?:-&gt;|->)([\s\S]*?)(?:&lt;-|<-)<\/\1>/g, '<$1 style="text-align:center">$2</$1>');
+}
 $('out').addEventListener('input', () => { const d = docs.find(x => x.id === current); if (d) d.md = $('out').value; clearTimeout(window._t); window._t = setTimeout(renderPreview, 300); });
 
 function setTab(md) {
@@ -451,79 +942,186 @@ $('tabPrev').onclick = () => setTab(false);
 
 function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2000); }
 $('btnCopy').onclick = async () => {
-  try { await navigator.clipboard.writeText($('out').value); toast('✓ Copiado al portapapeles'); }
+  try { await navigator.clipboard.writeText(withImages($('out').value, curDoc(), true)); toast('✓ Copiado al portapapeles'); }
   catch { $('out').select(); document.execCommand('copy'); toast('✓ Copiado'); }
 };
 $('btnDown').onclick = () => {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([$('out').value], { type: 'text/markdown;charset=utf-8' }));
+  a.href = URL.createObjectURL(new Blob([withImages($('out').value, curDoc())], { type: 'text/markdown;charset=utf-8' }));
   a.download = fileName + '.md'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   toast('✓ Descargado ' + fileName + '.md');
 };
 
 // ===== Exportar a Word (.docx) desde el Markdown actual =====
 const xmlEsc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-function runs(text, bold = false) {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).filter(Boolean);
-  return parts.map(pt => {
-    let rpr = '', t = pt;
-    if (/^\*\*.+\*\*$/.test(pt)) { rpr = '<w:b/>'; t = pt.slice(2, -2); }
-    else if (/^\*.+\*$/.test(pt)) { rpr = '<w:i/>'; t = pt.slice(1, -1); }
-    else if (/^`.+`$/.test(pt)) { rpr = '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>'; t = pt.slice(1, -1); }
-    t = t.replace(/\\([#>*\d])/g, '$1');
-    if (bold && !rpr.includes('<w:b/>')) rpr += '<w:b/>';
-    return `<w:r>${rpr ? '<w:rPr>' + rpr + '</w:rPr>' : ''}<w:t xml:space="preserve">${xmlEsc(t)}</w:t></w:r>`;
-  }).join('');
+// ---------- Markdown → Word ----------
+function parseCss(s) {
+  const o = {}; let m;
+  if ((m = s.match(/color:\s*#?([0-9a-f]{6})/i))) o.color = m[1].toUpperCase();
+  if ((m = s.match(/font-size:\s*([\d.]+)pt/i))) o.size = Math.round(+m[1] * 2);
+  if ((m = s.match(/font-family:\s*'?([^;']+)'?/i))) o.font = m[1].trim();
+  return o;
 }
-function mdToDocXml(md) {
-  const para = (style, text, extra = '') => `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ''}${extra}</w:pPr>${runs(text)}</w:p>`;
-  const out = []; let buf = [], tbl = [];
+function runs(text, bold = false) {
+  const out = [], st = { b: false, i: false, code: false }, spans = [];
+  const re = /\\[\\*_#>|.\d-]|<span style="([^"]*)">|<\/span>|\*\*|\*|`/g;
+  let last = 0, m, buf = '';
+  const emit = () => {
+    if (!buf) return;
+    const t = buf.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); buf = '';
+    const sp = Object.assign({}, ...spans);
+    const mk = link => {
+      let r = '';
+      if (st.code) r += '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>';
+      else if (sp.font) r += `<w:rFonts w:ascii="${xmlEsc(sp.font)}" w:hAnsi="${xmlEsc(sp.font)}" w:cs="${xmlEsc(sp.font)}"/>`;
+      if (bold || st.b) r += '<w:b/>';
+      if (st.i) r += '<w:i/>';
+      if (sp.color || link) r += `<w:color w:val="${sp.color || '0563C1'}"/>`;
+      if (sp.size) r += `<w:sz w:val="${sp.size}"/><w:szCs w:val="${sp.size}"/>`;
+      if (link) r += '<w:u w:val="single"/>';
+      return r ? '<w:rPr>' + r + '</w:rPr>' : '';
+    };
+    // las direcciones web se convierten en enlaces que se pueden pulsar
+    t.split(/(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)])/).forEach((part, k) => {
+      if (!part) return;
+      const run = `<w:r>${mk(k % 2)}<w:t xml:space="preserve">${xmlEsc(part)}</w:t></w:r>`;
+      if (k % 2) { links.push(part); out.push(`<w:hyperlink r:id="rIdLink${links.length}">${run}</w:hyperlink>`); }
+      else out.push(run);
+    });
+  };
+  while ((m = re.exec(text))) {
+    buf += text.slice(last, m.index); last = re.lastIndex;
+    const tk = m[0];
+    if (tk[0] === '\\') { buf += tk.slice(1); continue; }
+    if (st.code && tk !== '`') { buf += tk; continue; }
+    if (tk === '`') { emit(); st.code = !st.code; }
+    else if (tk.startsWith('<span')) { emit(); spans.push(parseCss(m[1])); }
+    else if (tk === '</span>') { emit(); spans.pop(); }
+    else if (tk === '**') { if (st.b || text.indexOf('**', last) >= 0) { emit(); st.b = !st.b; } else buf += tk; }
+    else if (tk === '*') { if (st.i || /(^|[^\\])\*/.test(text.slice(last))) { emit(); st.i = !st.i; } else buf += tk; }
+  }
+  buf += text.slice(last); emit();
+  return out.join('');
+}
+function readFormat(md) {
+  const m = md.match(/<!--\s*formato:([^>]*?)-->/);
+  if (!m) return null;
+  const f = {};
+  m[1].split(';').forEach(kv => { const [k, v] = kv.split('=').map(x => (x || '').trim()); if (k) f[k] = v; });
+  const [pw, ph] = (f['página'] || '').split('x').map(Number), [ml, mr, mt, mb] = (f['márgenes'] || '').split(',').map(Number);
+  const li = (f.lista || '').split(',');
+  return { list: li[0] !== '' && li.length >= 2 ? { at: +li[0], text: +li[1], bold: li[2] === 'negrita' } : null, spaceH: f.espacio_titulo !== undefined ? +f.espacio_titulo : null, font: f.fuente || 'Calibri', size: +f['tamaño'] || 11, color: (f.color || '000000').toUpperCase(), line: +f.interlineado || 1.15, space: f.espacio !== undefined ? +f.espacio : 8,
+    justify: f['alineación'] !== 'izquierda', pw: pw || 595, ph: ph || 842, ml: ml || 71, mr: mr || 71, mt: mt || 71, mb: mb || 71, foot: +f.pie || 35 };
+}
+let olStarts = [], media = [], links = [], footXml = '';
+// «Página 1 de 3» en el pie → número de página automático de Word
+function pageFields(xml) {
+  return xml.replace(/<w:r>(<w:rPr>(?:(?!<\/w:rPr>).)*<\/w:rPr>)?<w:t xml:space="preserve">([^<]*?)(P[áa]gina) \d+ de \d+([^<]*)<\/w:t><\/w:r>/g, (m, rp = '', pre, word, post) => {
+    const t = x => x ? `<w:r>${rp}<w:t xml:space="preserve">${x}</w:t></w:r>` : '';
+    const fld = code => `<w:r>${rp}<w:fldChar w:fldCharType="begin"/></w:r><w:r>${rp}<w:instrText xml:space="preserve"> ${code} </w:instrText></w:r><w:r>${rp}<w:fldChar w:fldCharType="separate"/></w:r><w:r>${rp}<w:t>1</w:t></w:r><w:r>${rp}<w:fldChar w:fldCharType="end"/></w:r>`;
+    return t(pre) + t(word + ' ') + fld('PAGE') + t(' de ') + fld('NUMPAGES') + t(post);
+  });
+}
+function mdToDocXml(md, images = {}) {
+  const fmt = readFormat(md);
+  const pw = fmt ? fmt.pw : 595, ph = fmt ? fmt.ph : 842, ml = fmt ? fmt.ml : 71, mr = fmt ? fmt.mr : 71;
+  const textW = pw - ml - mr;
+  let anchor = '';
+  const para = (style, text, extra = '') => { const a = anchor; anchor = ''; return `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ''}${extra}</w:pPr>${a}${runs(text)}</w:p>`; };
+  const center = t => { const m = t.match(/^->([\s\S]*)<-$/); return m ? [m[1], '<w:jc w:val="center"/>'] : [t, '']; };
+  const out = [], foot = []; let buf = [], tbl = [], lastList = null, tblOpt = null, inFoot = false;
+  olStarts = []; media = []; links = [];
   const flush = () => { if (buf.length) { out.push(para('', buf.join(' '))); buf = []; } };
   const flushTbl = () => {
     if (!tbl.length) return;
     const rows = tbl.filter(r => !/^\|?\s*:?-{3,}/.test(r)).map(r => r.replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|')));
     tbl = [];
-    const n = Math.max(...rows.map(r => r.length));
-    const bd = ['top','left','bottom','right','insideH','insideV'].map(k => `<w:${k} w:val="single" w:sz="4" w:space="0" w:color="94A3B8"/>`).join('');
-    let x = `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${bd}</w:tblBorders><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${'<w:gridCol w:w="' + Math.floor(9070 / n) + '"/>'.repeat(n)}</w:tblGrid>`;
-    rows.forEach((r, k) => {
-      x += `<w:tr>${k === 0 ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}`;
-      for (let c = 0; c < n; c++) x += `<w:tc><w:tcPr><w:tcW w:w="${Math.floor(9070 / n)}" w:type="dxa"/>${k === 0 ? '<w:shd w:val="clear" w:color="auto" w:fill="DBEAFE"/>' : ''}</w:tcPr><w:p><w:pPr><w:spacing w:before="40" w:after="40"/><w:jc w:val="left"/></w:pPr>${runs(r[c] || '', k === 0)}</w:p></w:tc>`;
+    const n = Math.max(...rows.map(r => r.length)), opt = tblOpt || {}; tblOpt = null;
+    const pc = opt.widths && opt.widths.length === n ? opt.widths : Array(n).fill(100 / n), sum = pc.reduce((a, b) => a + b, 0);
+    const cw = pc.map(p => Math.floor(20 * p * (opt.pt && sum <= textW ? 1 : textW / sum)));
+    const color = opt.border === undefined ? '94A3B8' : opt.border;
+    const bd = ['top','left','bottom','right','insideH','insideV'].map(k => color ? `<w:${k} w:val="single" w:sz="4" w:space="0" w:color="${color}"/>` : `<w:${k} w:val="nil"/>`).join('');
+    let x = `<w:tbl><w:tblPr><w:tblW w:w="${cw.reduce((a, b) => a + b, 0)}" w:type="dxa"/><w:tblBorders>${bd}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="${color ? 80 : 0}" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${cw.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`;
+    rows.forEach(r => {
+      x += '<w:tr>';
+      for (let c = 0; c < n; c++) x += `<w:tc><w:tcPr><w:tcW w:w="${cw[c]}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:before="20" w:after="20"/><w:jc w:val="left"/></w:pPr>${runs(r[c] || '')}</w:p></w:tc>`;
       x += '</w:tr>';
     });
-    out.push(x + '</w:tbl><w:p/>');
+    out.push(x + '</w:tbl>');
   };
-  for (const raw of md.split('\n')) {
+  const picture = (img, n) => {
+    let w = img.w, h = img.h; if (w > textW) { h *= textW / w; w = textW; }
+    const cx = Math.round(w * 12700), cy = Math.round(h * 12700), ext = /^data:image\/png/.test(img.data) ? 'png' : 'jpeg';
+    media.push({ name: `image${n}.${ext}`, data: img.data.split(',')[1], rid: 'rIdImg' + n });
+    const graphic = `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${n}" name="image${n}.${ext}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdImg${n}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>`;
+    const fl = (img.align || '').match(/flotante\s+(-?\d+)\s+(-?\d+)(?:\s+(\d+))?/);
+    if (fl) { // imagen flotante a la izquierda: el texto siguiente la rodea
+      anchor = `<w:r><w:drawing><wp:anchor distT="0" distB="${(+fl[3] || 0) * 12700}" distL="0" distR="${Math.max(0, +fl[1]) * 12700}" simplePos="0" relativeHeight="1" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="margin"><wp:posOffset>${Math.max(0, +fl[2]) * 12700}</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapSquare wrapText="right"/><wp:docPr id="${n}" name="Imagen ${n}"/><wp:cNvGraphicFramePr/>${graphic}</wp:anchor></w:drawing></w:r>`;
+      return '';
+    }
+    return `<w:p><w:pPr><w:spacing w:after="0"/><w:jc w:val="${{ izquierda: 'left', derecha: 'right' }[img.align] || 'center'}"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${n}" name="Imagen ${n}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${n}" name="image${n}.${ext}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdImg${n}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  };
+  for (const raw of md.replace(/<!--\s*formato:[\s\S]*?-->/g, '').split('\n')) {
     const l = raw.trim(); let m;
+    if (/^<!--\s*pie\s*-->$/.test(l)) { flushTbl(); flush(); inFoot = true; continue; }
+    if (/^<!--\s*\/pie\s*-->$/.test(l)) { inFoot = false; continue; }
+    if (inFoot) { if (l) foot.push(`<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="${Math.round(textW * 20)}"/></w:tabs><w:spacing w:after="0"/><w:jc w:val="left"/></w:pPr>${l.split('\t').map(runs).join('<w:r><w:tab/></w:r>')}</w:p>`); continue; }
+    if ((m = l.match(/^<!--\s*tabla:([\s\S]*?)-->$/))) {
+      const b = (m[1].match(/bordes=([#\w]+)/) || [])[1], w = m[1].match(/anchos=([\d,]+)(pt)?/);
+      tblOpt = { border: b === undefined ? undefined : b === 'no' ? '' : b.replace('#', '').toUpperCase(), widths: w ? w[1].split(',').map(Number) : null, pt: !!(w && w[2]) };
+      continue;
+    }
+    if (/^<!--[\s\S]*-->$/.test(l)) continue;
+    if ((m = l.match(/^<hr(?:\s+style="[^"]*?color:\s*#?([0-9a-f]{6})[^"]*")?\s*\/?>$/i))) { flush(); flushTbl(); out.push(`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="8" w:space="1" w:color="${(m[1] || '94A3B8').toUpperCase()}"/></w:pBdr><w:spacing w:before="0" w:after="120" w:line="120" w:lineRule="exact"/></w:pPr></w:p>`); continue; }
     if (l.startsWith('|')) { flush(); tbl.push(l); continue; }
     flushTbl();
     if (!l) { flush(); continue; }
+    if (!/^ *([-*+]|\d+[.)])\s/.test(raw)) lastList = null;
     if (/^(---|\*\*\*)$/.test(l)) { flush(); out.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>'); }
-    else if ((m = l.match(/^\*\[(Aquí viene foto[^\]]*)\]\*$/i))) { flush(); out.push(`<w:p><w:pPr><w:jc w:val="center"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="64748B"/></w:rPr><w:t xml:space="preserve">[${xmlEsc(m[1])}]</w:t></w:r></w:p>`); }
-    else if ((m = l.match(/^(#{1,6})\s+(.*)/))) { flush(); out.push(para('Heading' + Math.min(m[1].length, 3), m[2])); }
-    else if ((m = l.match(/^[-*+]\s+(.*)/))) { flush(); out.push(para('ListParagraph', m[1], '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>')); }
-    else if ((m = l.match(/^\d+[.)]\s+(.*)/))) { flush(); out.push(para('ListParagraph', m[1], '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>')); }
+    else if ((m = l.match(/^!\[[^\]]*\]\(img:([\w-]+)(?:\s+"([^"]*)")?\)$/)) && images[m[1]]) { flush(); const x = picture({ ...images[m[1]], align: m[2] }, media.length + 1); if (x) out.push(x); }
+    else if ((m = l.match(/^\*\[(Aquí viene foto[^\]]*)\]\*$/i))) { flush(); out.push(`<w:p><w:pPr><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/><w:spacing w:before="120" w:after="120"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="64748B"/></w:rPr><w:t xml:space="preserve">[${xmlEsc(m[1])}]</w:t></w:r></w:p>`); }
+    else if ((m = l.match(/^(#{1,6})\s+(.*)/))) { flush(); const [t, jc] = center(m[2]); out.push(para('Heading' + Math.min(m[1].length, 3), t, jc)); }
+    else if ((m = l.match(/^[-*+]\s+(.*)/))) { flush(); const lv = /^ {2,}/.test(raw) ? 1 : 0; if (!lv) lastList = 'ul'; out.push(para('ListParagraph', m[1], `<w:numPr><w:ilvl w:val="${lv}"/><w:numId w:val="1"/></w:numPr>`)); }
+    else if ((m = l.match(/^(\d+)[.)]\s+(.*)/))) {
+      flush(); const lv = /^ {2,}/.test(raw) ? 1 : 0;
+      if (!lv && lastList !== 'ol') { olStarts.push(+m[1]); lastList = 'ol'; }
+      out.push(para('ListParagraph', m[2], `<w:numPr><w:ilvl w:val="${lv}"/><w:numId w:val="${olStarts.length ? olStarts.length + 2 : 2}"/></w:numPr>`));
+    }
+    else if (/^->[\s\S]*<-$/.test(l)) { flush(); const [t, jc] = center(l); out.push(para('', t, jc)); }
     else buf.push(l);
   }
   flushTbl(); flush();
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${out.join('')}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  if (anchor) { out.push(`<w:p>${anchor}</w:p>`); anchor = ''; }
+  const tw = v => Math.round(v * 20);
+  footXml = foot.length ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${pageFields(foot.join(''))}</w:ftr>` : '';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${out.join('')}<w:sectPr>${foot.length ? '<w:footerReference w:type="default" r:id="rIdFoot"/>' : ''}<w:pgSz w:w="${tw(pw)}" w:h="${tw(ph)}"${pw > ph ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="${tw(fmt ? fmt.mt : 71)}" w:right="${tw(mr)}" w:bottom="${tw(fmt ? fmt.mb : 71)}" w:left="${tw(ml)}" w:header="709" w:footer="${tw(fmt ? fmt.foot : 35)}" w:gutter="0"/></w:sectPr></w:body></w:document>`;
 }
-async function buildDocx(md) {
+async function buildDocx(md, images = {}) {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const fmt = readFormat(md);
+  const docXml = mdToDocXml(md, images);
   const zip = new JSZip();
-  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`);
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>${footXml ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : ''}</Types>`);
   zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
-  zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`);
-  const h = (id, name, sz, color) => `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="${id.slice(-1) - 1}"/></w:pPr><w:rPr><w:b/><w:color w:val="${color}"/><w:sz w:val="${sz}"/></w:rPr></w:style>`;
-  zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:lang w:val="es-ES"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${h('Heading1','heading 1',36,'1D4ED8')}${h('Heading2','heading 2',30,'1E3A8A')}${h('Heading3','heading 3',26,'334155')}<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60"/><w:ind w:left="720"/></w:pPr></w:style></w:styles>`);
-  zip.file('word/numbering.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>`);
-  zip.file('word/document.xml', mdToDocXml(md));
+  zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>${media.map(f => `<Relationship Id="${f.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${f.name}"/>`).join('')}${links.map((u, k) => `<Relationship Id="rIdLink${k + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEsc(u).replace(/"/g, '&quot;')}" TargetMode="External"/>`).join('')}${footXml ? '<Relationship Id="rIdFoot" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' : ''}</Relationships>`);
+  if (footXml) zip.file('word/footer1.xml', footXml);
+  media.forEach(f => zip.file('word/media/' + f.name, f.data, { base64: true }));
+  // Con formato conservado, los títulos heredan fuente, color y tamaño del original
+  const h = (id, name, sz, color) => `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="${fmt ? Math.round((fmt.spaceH ?? fmt.space * 2) * 20) : 240}" w:after="${fmt ? Math.round(fmt.space * 20) : 120}"/><w:jc w:val="left"/><w:outlineLvl w:val="${id.slice(-1) - 1}"/></w:pPr><w:rPr><w:b/>${fmt ? '' : `<w:color w:val="${color}"/><w:sz w:val="${sz}"/>`}</w:rPr></w:style>`;
+  const L = fmt && fmt.list ? fmt.list : { at: 18, text: 36, bold: false };
+  const ind = `<w:pPr><w:ind w:left="${Math.round(L.text * 20)}" w:hanging="${Math.round((L.text - L.at) * 20)}"/></w:pPr>${L.bold ? '<w:rPr><w:b/></w:rPr>' : ''}`;
+  const font = fmt ? xmlEsc(fmt.font) : 'Calibri', size = fmt ? Math.round(fmt.size * 2) : 22;
+  const line = fmt ? Math.round(240 * fmt.line) : 276, jc = !fmt || fmt.justify ? 'both' : 'left';
+  zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}"/>${fmt ? `<w:color w:val="${fmt.color}"/>` : ''}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/><w:lang w:val="es-ES"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="${fmt ? Math.round(fmt.space * 20) : 160}" w:line="${line}" w:lineRule="auto"/><w:jc w:val="${jc}"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${h('Heading1','heading 1',36,'1D4ED8')}${h('Heading2','heading 2',30,'1E3A8A')}${h('Heading3','heading 3',26,'334155')}<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="${fmt ? Math.round(fmt.space * 6) : 60}"/><w:ind w:left="${Math.round(L.text * 20)}"/></w:pPr></w:style></w:styles>`);
+  zip.file('word/numbering.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/>${ind}</w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="◦"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/>${ind}</w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2)"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>${olStarts.map((st, k) => `<w:num w:numId="${k + 3}"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="${st}"/></w:lvlOverride></w:num>`).join('')}</w:numbering>`);
+  zip.file('word/document.xml', docXml);
   return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 }
+
 $('btnDocx').onclick = async () => {
   const btn = $('btnDocx'); btn.disabled = true; btn.textContent = 'Generando…';
   try {
-    const blob = await buildDocx($('out').value);
+    const d = curDoc(); const blob = await buildDocx($('out').value, d ? d.images : {});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = fileName + '.docx'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast('✓ Descargado ' + fileName + '.docx');
@@ -536,7 +1134,7 @@ async function zipAll(kind) {
   btn.disabled = true; btn.textContent = 'Preparando…';
   try {
     const zip = new JSZip();
-    for (const d of docs.filter(x => x.md)) zip.file(d.name + (kind === 'md' ? '.md' : '.docx'), kind === 'md' ? d.md : await buildDocx(d.md));
+    for (const d of docs.filter(x => x.md)) zip.file(d.name + (kind === 'md' ? '.md' : '.docx'), kind === 'md' ? withImages(d.md, d) : await buildDocx(d.md, d.images || {}));
     const blob = await zip.generateAsync({ type: 'blob' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = kind === 'md' ? 'pdf-a-markdown.zip' : 'pdf-a-word.zip'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
