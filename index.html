@@ -120,7 +120,7 @@ textarea:focus{outline:none}
     <img src="icon-192.png" width="64" height="64" alt="">
     <div>
       <h1>PDF a Markdown y Word</h1>
-      <p>Convierte tus PDF conservando títulos, listas, tablas, colores e imágenes. Todo se procesa en tu dispositivo.</p>
+      <p>Convierte tus PDF conservando títulos, listas, tablas, colores, imágenes y enlaces. Reconoce páginas escaneadas con OCR. Todo se procesa en tu dispositivo.</p>
       <div class="chips" aria-hidden="true"><span class="chip pdf">PDF</span><span class="chip">→</span><span class="chip md">Markdown</span><span class="chip w">Word</span></div>
     </div>
   </header>
@@ -128,7 +128,7 @@ textarea:focus{outline:none}
   <div class="drop" id="drop" role="button" tabindex="0" aria-label="Seleccionar archivo PDF">
     <div class="ic"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg></div>
     <strong>Arrastra aquí uno o varios PDF o pulsa para elegirlos</strong>
-    <span>Funciona con PDF de texto (no escaneados)</span>
+    <span>Funciona con PDF de texto y también con escaneados (OCR automático). También puedes pegarlos con Ctrl+V</span>
     <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden>
   </div>
 
@@ -137,6 +137,8 @@ textarea:focus{outline:none}
     <label for="optHead"><input type="checkbox" id="optHead" checked> Detectar títulos</label>
     <label for="optHF"><input type="checkbox" id="optHF" checked> Quitar encabezados y pies repetidos</label>
     <label for="optPages"><input type="checkbox" id="optPages"> Separar páginas</label>
+    <label for="optImg"><input type="checkbox" id="optImg" checked> Extraer imágenes</label>
+    <label for="optOCR"><input type="checkbox" id="optOCR" checked> OCR en páginas escaneadas</label>
   </div>
 
   <div class="status" id="status" role="status" aria-live="polite"><span id="statusText"></span><div class="bar" id="bar" hidden><i id="barFill"></i></div></div>
@@ -175,6 +177,8 @@ textarea:focus{outline:none}
 const PDF_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
 const STD_FONTS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/';
+const CMAPS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/';
+const openPdf = (data, password) => pdfjsLib.getDocument({ data, password, standardFontDataUrl: STD_FONTS, cMapUrl: CMAPS, cMapPacked: true }).promise;
 // Worker desde blob: evita el bloqueo de workers de otro dominio en algunos navegadores
 try {
   pdfjsLib.GlobalWorkerOptions.workerPort = new Worker(URL.createObjectURL(new Blob([`importScripts('${PDF_WORKER}');`], { type: 'text/javascript' })));
@@ -190,7 +194,7 @@ drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefau
 ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
 input.onchange = () => { addFiles([...input.files]); input.value = ''; };
-['optHF','optPages','optHead','optFmt'].forEach(id => $(id).onchange = () => { docs.forEach(d => { if (d.buffer) d.state = 'pending'; }); processQueue(); });
+['optHF','optPages','optHead','optFmt','optImg','optOCR'].forEach(id => $(id).onchange = () => { docs.forEach(d => { if (d.buffer) d.state = 'pending'; }); processQueue(); });
 
 function status(type, text, progress) {
   const s = $('status'); s.className = 'status show ' + type;
@@ -227,16 +231,29 @@ async function processQueue() {
   } finally { busy = false; drop.style.pointerEvents = ''; }
 }
 
+// Si el PDF tiene contraseña, se pide (y se recuerda para reconversiones)
+async function openWithPassword(d) {
+  let pw = d.password;
+  for (;;) {
+    try { const pdf = await openPdf(d.buffer.slice(0), pw); d.password = pw; return pdf; }
+    catch (e) {
+      if (e.name !== 'PasswordException') throw e;
+      pw = prompt(`«${d.name}.pdf» está protegido.` + (e.code === 2 ? ' La contraseña no es correcta.' : '') + ' Escribe la contraseña:');
+      if (pw === null) throw e;
+    }
+  }
+}
+
 async function convertDoc(d) {
   const idx = docs.filter(x => x.state !== 'pending').length;
+  let pdf = null;
   try {
-    let pdf;
-    try { pdf = await pdfjsLib.getDocument({ data: d.buffer.slice(0), standardFontDataUrl: STD_FONTS }).promise; }
+    try { pdf = await openWithPassword(d); }
     catch (e) {
       if (e.name === 'PasswordException' || !pdfjsLib.GlobalWorkerOptions.workerPort) throw e;
       console.warn('Reintento sin worker por blob', e);
       pdfjsLib.GlobalWorkerOptions.workerPort = null;
-      pdf = await pdfjsLib.getDocument({ data: d.buffer.slice(0), standardFontDataUrl: STD_FONTS }).promise;
+      pdf = await openWithPassword(d);
     }
     const pages = []; d.images = {};
     for (let p = 1; p <= pdf.numPages; p++) {
@@ -251,12 +268,15 @@ async function convertDoc(d) {
     }
     const words = d.md.split(/\s+/).filter(Boolean).length;
     d.meta = `${pdf.numPages} página(s) · ${words.toLocaleString('es')} palabras`;
-    if (words < 5) { d.state = 'warn'; d.info = 'Sin texto (¿escaneado?)'; }
+    if (words < 5) { d.state = 'warn'; d.info = 'Sin texto (¿escaneado sin OCR?)'; }
     else { d.state = 'ok'; d.info = d.meta; }
   } catch (e) {
     console.error(e);
     d.state = 'err'; d.md = '';
     d.info = e.name === 'PasswordException' ? 'Protegido con contraseña' : 'No se pudo leer: ' + (e.message || e.name || e).toString().slice(0, 90);
+  } finally {
+    await endOcr();
+    if (pdf) try { pdf.destroy(); } catch (e) {}
   }
 }
 
@@ -301,11 +321,17 @@ function removeDoc(id) {
 $('btnClear').onclick = () => { if (busy) return; docs.length = 0; current = null; $('result').classList.remove('show'); $('status').className = 'status'; renderList(); };
 
 // Agrupa fragmentos de texto en líneas
-// Lee una página: tipos de letra, colores, líneas en orden de lectura e imágenes
+// Lee una página: tipos de letra, colores, líneas en orden de lectura, enlaces e imágenes
 async function pageLines(page, p, d) {
   let boxes = [], ops = null, rules = [];
-  try { ops = await page.getOperatorList(); boxes = findImages(ops); } catch (e) { console.warn('Imágenes no detectadas en pág.', p, e); }
+  try { ops = await page.getOperatorList(); if ($('optImg').checked) boxes = findImages(ops); } catch (e) { console.warn('Imágenes no detectadas en pág.', p, e); }
   try { if (ops) rules = findRules(ops); } catch (e) { console.warn('Líneas no detectadas en pág.', p, e); }
+  let links = [];
+  try {
+    const an = await page.getAnnotations();
+    links = (an || []).filter(a => a.subtype === 'Link' && a.url && a.rect)
+      .map(a => ({ x1: Math.min(a.rect[0], a.rect[2]), y1: Math.min(a.rect[1], a.rect[3]), x2: Math.max(a.rect[0], a.rect[2]), y2: Math.max(a.rect[1], a.rect[3]), url: a.url }));
+  } catch (e) { console.warn('Enlaces no detectados en pág.', p, e); }
   const tc = await page.getTextContent();
   const fonts = {};
   await Promise.all(Object.keys(tc.styles || {}).map(k => Promise.race([
@@ -323,6 +349,14 @@ async function pageLines(page, p, d) {
   const lines = buildLines(tc.items, fonts, colors);
   const view = page.view || [0, 0, 595, 842];
   lines.pageW = view[2] - view[0]; lines.pageH = view[3] - view[1];
+  // Página sin texto (escaneada): se intenta OCR si está activado
+  const nChars = lines.reduce((a, l) => a + (l.side ? 0 : l.text.replace(/\s/g, '').length), 0);
+  if (nChars < 8 && $('optOCR').checked) {
+    try {
+      const ol = await ocrPage(page, view, d, p);
+      if (ol) { ol.links = links; return ol; }
+    } catch (e) { console.warn('OCR no disponible en pág.', p, e); }
+  }
   // Línea horizontal justo después de un texto en la misma altura (p. ej. «Fdo.: ______»)
   rules.filter(r => r.h).forEach(r => {
     const l = lines.find(t => !t.side && t.xe && Math.abs(t.y - r.y) < t.size * 0.9 && t.xe <= r.x1 + 3 && r.x1 - t.xe < 80);
@@ -332,16 +366,83 @@ async function pageLines(page, p, d) {
     l.text += ' ' + '_'.repeat(n); l.xe = r.x2; r.used = true;
   });
   lines.rules = rules.filter(r => !r.used);
+  lines.links = links;
+  if (!boxes.length || typeof document === 'undefined') return lines;
+  // Imagen a página completa detrás del texto: es el fondo, no una foto
+  const area = lines.pageW * lines.pageH;
+  boxes = boxes.filter(b => nChars <= 20 || (b.right - b.left) * (b.top - b.bottom) < area * 0.85);
+  if (!boxes.length) return lines;
   let crops = [];
-  if (boxes.length && d && typeof document !== 'undefined') {
-    try { crops = await cropImages(page, boxes); } catch (e) { console.warn('No se pudieron recortar las imágenes de la pág.', p, e); }
-  }
+  try { crops = await cropImages(page, boxes); } catch (e) { console.warn('No se pudieron recortar las imágenes de la pág.', p, e); }
   boxes.map((im, k) => ({ im, k })).sort((a, b) => b.im.top - a.im.top).forEach(({ im, k }) => {
     const img = { image: true, page: p, y: im.top, yb: im.bottom, size: 0, x: im.left, x2: im.right, text: '\u0000img' + p + '_' + Math.round(im.top) };
     if (crops[k]) { img.id = d.id + '_' + p + '_' + k; d.images[img.id] = crops[k]; }
-    const at = lines.findIndex(l => l.side || l.y < im.top);
+    const at = lines.findIndex(l => l.side || l.y < im.top - (im.top - im.bottom) * 0.35);
     lines.splice(at < 0 ? lines.length : at, 0, img);
   });
+  return lines;
+}
+
+// OCR de una página escaneada con Tesseract.js (se carga solo cuando hace falta)
+let _tessP = null;
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  if (!_tessP) _tessP = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = res; s.onerror = () => { _tessP = null; rej(new Error('No se pudo cargar el motor OCR')); };
+    document.head.appendChild(s);
+  });
+  return _tessP;
+}
+let ocrWorker = null, ocrCtx = {};
+async function getOcrWorker() {
+  await loadTesseract();
+  if (!ocrWorker) ocrWorker = Tesseract.createWorker('spa+eng', 1, { logger: m => {
+    if (m.status === 'recognizing text' && ocrCtx.d) status('info', `«${ocrCtx.d.name}» · OCR en página ${ocrCtx.p}: ${Math.round(m.progress * 100)}%`, m.progress);
+  } }).catch(e => { ocrWorker = null; throw e; });
+  return ocrWorker;
+}
+async function endOcr() {
+  if (!ocrWorker) return;
+  const w = ocrWorker; ocrWorker = null;
+  try { await (await w).terminate(); } catch (e) {}
+}
+async function ocrPage(page, view, d, p) {
+  const worker = await getOcrWorker();
+  ocrCtx = { d, p };
+  const v1 = page.getViewport({ scale: 1 });
+  const vp = page.getViewport({ scale: Math.min(2.5, 2600 / Math.max(v1.width, v1.height)) });
+  const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+  const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  let timer;
+  const r = await Promise.race([
+    worker.recognize(cv),
+    new Promise((_, rej) => timer = setTimeout(() => { endOcr(); rej(new Error('OCR demasiado lento')); }, 150000))
+  ]).finally(() => { clearTimeout(timer); cv.width = cv.height = 0; });
+  const data = r && r.data;
+  if (!data || !data.text || data.text.trim().length < 3) return null;
+  const sc = vp.scale, H = (view[3] - view[1]) || 842;
+  let raw = data.lines;
+  if (!raw || !raw.length) { // por si la versión no devuelve líneas con posición
+    const ls = data.text.split('\n').filter(t => t.trim());
+    raw = ls.map((t, i) => ({ text: t, bbox: { x0: 50 * sc, y0: (50 + i * 24) * sc, x1: 500 * sc, y1: (68 + i * 24) * sc } }));
+  }
+  const lines = raw.map(ln => {
+    const t = (ln.text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return null;
+    const b = ln.bbox;
+    const x = b.x0 / sc, xe = b.x1 / sc, yTop = b.y0 / sc, yBot = b.y1 / sc;
+    const size = Math.max(6, Math.round((yBot - yTop) * 0.75 * 2) / 2);
+    const seg = { b: false, i: false, c: '000000', s: size, f: '' };
+    return { text: t, segs: [{ t, ...seg }], y: H - yBot, size, x, tx: x, xe, col: 0, bold: false, bullet: false,
+      cells: [{ x, text: t }], parts: [{ x, xe, text: t, seg }] };
+  }).filter(Boolean);
+  if (!lines.length) return null;
+  lines.sort((a, b) => b.y - a.y);
+  lines.pageW = (view[2] - view[0]) || 595; lines.pageH = H;
+  lines.rules = []; lines.ocr = true;
   return lines;
 }
 
@@ -403,36 +504,58 @@ function colorHex(a, def) {
 // Saca cada imagen tal cual está dentro del PDF (sin el texto o las líneas que tenga encima)
 async function imageFromPdf(page, box) {
   let o = box.inline;
-  if (!o && box.name) o = await Promise.race([new Promise(r => { try { page.objs.get(box.name, r); } catch (e) { r(null); } }), new Promise(r => setTimeout(() => r(null), 4000))]);
+  if (!o && box.name) {
+    o = await new Promise(r => {
+      let done = false; const fin = v => { if (!done) { done = true; r(v); } };
+      try { page.objs.get(box.name, v => fin(v)); } catch (e) { fin(null); }
+      setTimeout(() => fin(null), 15000);
+    });
+  }
   if (!o) return null;
-  const c = document.createElement('canvas'), ctx = c.getContext('2d'); let alpha = false;
-  if (o.bitmap) { c.width = o.bitmap.width; c.height = o.bitmap.height; ctx.drawImage(o.bitmap, 0, 0); alpha = true; }
+  const c = document.createElement('canvas'), ctx = c.getContext('2d', { willReadFrequently: true });
+  let maybeAlpha = false;
+  if (o.bitmap) { c.width = o.bitmap.width; c.height = o.bitmap.height; ctx.drawImage(o.bitmap, 0, 0); maybeAlpha = o.kind !== 2; }
   else if (o.data && o.width && o.height) {
     c.width = o.width; c.height = o.height;
     const id = ctx.createImageData(o.width, o.height), d = id.data, src = o.data, n = o.width * o.height;
-    if (o.kind === 3) { for (let i = 0; i < n * 4; i++) d[i] = src[i]; alpha = true; }
+    if (o.kind === 3) { for (let i = 0; i < n * 4; i++) d[i] = src[i]; maybeAlpha = true; }
     else if (o.kind === 2) for (let i = 0, j = 0; i < n; i++, j += 3) { d[i * 4] = src[j]; d[i * 4 + 1] = src[j + 1]; d[i * 4 + 2] = src[j + 2]; d[i * 4 + 3] = 255; }
     else if (o.kind === 1) { const rb = (o.width + 7) >> 3; for (let y = 0; y < o.height; y++) for (let x = 0; x < o.width; x++) { const v = (src[y * rb + (x >> 3)] >> (7 - (x & 7))) & 1 ? 255 : 0, i = (y * o.width + x) * 4; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; } }
     else return null;
     ctx.putImageData(id, 0, 0);
   } else return null;
+  // PNG solo si de verdad hay píxeles transparentes (si no, JPEG mucho más ligero)
+  let alpha = false;
+  if (maybeAlpha && c.width * c.height <= 4e7) {
+    try {
+      const dd = ctx.getImageData(0, 0, c.width, c.height).data, step = Math.max(4, Math.floor(dd.length / 2000 / 4) * 4);
+      for (let i = 3; i < dd.length; i += step) if (dd[i] < 250) { alpha = true; break; }
+    } catch (e) {}
+  }
   let out = c;
   if (box.flipX || box.flipY) {
     out = document.createElement('canvas'); out.width = c.width; out.height = c.height;
     const g = out.getContext('2d'); g.translate(box.flipX ? c.width : 0, box.flipY ? c.height : 0); g.scale(box.flipX ? -1 : 1, box.flipY ? -1 : 1); g.drawImage(c, 0, 0);
   }
-  return { data: alpha ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', 0.9), w: box.right - box.left, h: box.top - box.bottom };
+  if (box.swap) { // imagen girada 90°/270° dentro del PDF
+    const r2 = document.createElement('canvas'); r2.width = out.height; r2.height = out.width;
+    const g2 = r2.getContext('2d');
+    if (box.swap === 1) { g2.translate(r2.width, 0); g2.rotate(Math.PI / 2); }
+    else { g2.translate(0, r2.height); g2.rotate(-Math.PI / 2); }
+    g2.drawImage(out, 0, 0); out = r2;
+  }
+  return { data: alpha ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', 0.92), w: box.right - box.left, h: box.top - box.bottom };
 }
 // Recorta las imágenes de la página renderizada para llevarlas al Word
 async function cropImages(page, boxes) {
   const direct = await Promise.all(boxes.map(b => imageFromPdf(page, b).catch(() => null)));
   if (direct.every(Boolean)) return direct;
   const v1 = page.getViewport({ scale: 1 });
-  const vp = page.getViewport({ scale: Math.min(2, 2400 / Math.max(v1.width, v1.height)) });
+  const vp = page.getViewport({ scale: Math.min(3, 3200 / Math.max(v1.width, v1.height)) });
   const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
   const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
   await page.render({ canvasContext: ctx, viewport: vp }).promise;
-  return boxes.map((b, k) => {
+  const res = boxes.map((b, k) => {
     if (direct[k]) return direct[k];
     const [x1, y1, x2, y2] = vp.convertToViewportRectangle([b.left, b.bottom, b.right, b.top]);
     const x = Math.max(0, Math.min(x1, x2)), y = Math.max(0, Math.min(y1, y2));
@@ -440,8 +563,10 @@ async function cropImages(page, boxes) {
     if (w < 4 || h < 4) return null;
     const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h);
     c.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, c.width, c.height);
-    return { data: c.toDataURL('image/jpeg', 0.9), w: b.right - b.left, h: b.top - b.bottom };
+    return { data: c.toDataURL('image/jpeg', 0.92), w: b.right - b.left, h: b.top - b.bottom };
   }).map(x => x || null);
+  cv.width = cv.height = 0;
+  return res;
 }
 
 // Nombre de fuente del PDF → nombre de fuente para Word
@@ -535,6 +660,7 @@ function assignColumns(frags) {
   best.runs.forEach(rn => rows.slice(rn.a, rn.b + 1).forEach(r => r.f.forEach(f => f.col = f.x + f.w <= best.g + 1 ? 1 : 2)));
 }
 
+const htmlEsc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const BULLET_CH = /[\u2022\u25aa\u25a0\u25e6\u25cf\u25cb\u2023\u2043\u2219\u25ba\u25b6\u27a2\u2713\u2714\u2756\u25c6\u25c7\u2192\uf000-\uf0ff]/;
 function buildLines(items, fonts = {}, colors = []) {
   const rotated = items.filter(i => i.str && i.str.trim() && Math.abs(i.transform[1]) > Math.abs(i.transform[0]));
@@ -585,22 +711,25 @@ function buildLines(items, fonts = {}, colors = []) {
     if (!l.frags.length) return null;
     let plain = '', end = null, tot = 0, bold = 0;
     const cells = [], segs = [];
+    const sizes = {}; l.frags.forEach(f => { const k = Math.round(f.size); sizes[k] = (sizes[k] || 0) + f.str.length; });
+    const size = +Object.entries(sizes).sort((a, b) => b[1] - a[1])[0][0];
+    const big = l.frags.filter(f => f.size >= size * 0.78);
+    const baseY = big.length ? big.reduce((a, f) => a + f.y, 0) / big.length : l.y;
+    const va = f => f.size < size * 0.78 ? (f.y - baseY > f.size * 0.22 ? 'sup' : (baseY - f.y > f.size * 0.22 ? 'sub' : '')) : '';
     for (const f of l.frags) {
       const gapX = end === null ? 0 : f.x - end;
       if (end === null || gapX > l.size * 0.8) cells.push({ x: f.x, text: '' });
       else if (gapX > l.size * 0.15 && !cells[cells.length - 1].text.endsWith(' ') && !f.str.startsWith(' ')) cells[cells.length - 1].text += ' ';
       const sp = end !== null && gapX > l.size * 0.15 && !plain.endsWith(' ') && !f.str.startsWith(' ') ? ' ' : '';
       plain += sp + f.str;
-      segs.push({ t: sp + f.str, b: f.bold, i: f.italic, c: f.color, s: Math.round(f.size * 2) / 2, f: f.fam });
+      segs.push({ t: sp + f.str, b: f.bold, i: f.italic, c: f.color, s: Math.round(f.size * 2) / 2, f: f.fam, v: va(f) });
       cells[cells.length - 1].text += f.str;
       const n = f.str.replace(/\s/g, '').length; tot += n; if (f.bold) bold += n;
       end = Math.max(end ?? -1e9, f.x + f.w);
     }
     cells.forEach(c => c.text = c.text.replace(/\s+/g, ' ').trim());
-    const sizes = {}; l.frags.forEach(f => { const k = Math.round(f.size); sizes[k] = (sizes[k] || 0) + f.str.length; });
-    const size = +Object.entries(sizes).sort((a, b) => b[1] - a[1])[0][0];
     return { text: plain.replace(/\s+/g, ' ').trim(), segs, y: l.y, size, x: bx, tx: l.frags[0].x, xe: end, col: l.col,
-      bold: tot > 0 && bold / tot >= 0.8, bullet, cells: cells.filter(c => c.text), parts: l.frags.map(f => ({ x: f.x, xe: f.x + f.w, text: f.str.trim(), seg: { b: f.bold, i: f.italic, c: f.color, s: Math.round(f.size * 2) / 2, f: f.fam } })) };
+      bold: tot > 0 && bold / tot >= 0.8, bullet, cells: cells.filter(c => c.text), parts: l.frags.map(f => ({ x: f.x, xe: f.x + f.w, text: f.str.trim(), seg: { b: f.bold, i: f.italic, c: f.color, s: Math.round(f.size * 2) / 2, f: f.fam, v: va(f) } })) };
   }).filter(l => l && l.text).concat(rotated.length ? [{ text: rotated.map(i => i.str.trim()).join(' · '), y: -1e6, size: 0, x: 0, cells: [], side: true }] : []);
 }
 
@@ -625,14 +754,14 @@ function findImages(ops) {
       if (box.right - box.left < 16 || box.top - box.bottom < 16) continue; // adornos diminutos
       const dup = found.find(b => b.bottom < box.top && box.bottom < b.top && b.left < box.right && box.left < b.right);
       if (dup) { Object.assign(dup, { name: null, inline: null, left: Math.min(dup.left, box.left), right: Math.max(dup.right, box.right), bottom: Math.min(dup.bottom, box.bottom), top: Math.max(dup.top, box.top) }); }
-      else found.push(Object.assign(box, { name, inline, flipX: ctm[0] < 0, flipY: ctm[3] < 0 }));
+      else found.push(Object.assign(box, { name, inline, flipX: ctm[0] < 0, flipY: ctm[3] < 0, swap: Math.abs(ctm[1]) > Math.abs(ctm[0]) ? (ctm[1] > 0 ? 1 : -1) : 0 }));
     }
   }
   return found;
 }
 
 // Agrupa líneas consecutivas con varias celdas alineadas en tablas
-function detectTables(lines) {
+function detectTables(lines, rules = []) {
   const marker = /^((\d{1,3}|[a-z])[.)]|[•·▪■◦●○–-])$/i;
   const isMulti = l => l && !l.image && !l.side && !l.bullet && l.cells && l.cells.length >= 2 && !(l.cells.length === 2 && marker.test(l.cells[0].text));
   const aligned = (l, ref, tol) => l.cells.filter(c => ref.cells.some(r => Math.abs(r.x - c.x) <= tol)).length >= Math.ceil(l.cells.length * 0.6);
@@ -655,10 +784,24 @@ function detectTables(lines) {
     }
     const group = lines.slice(i, j), multi = group.filter(isMulti);
     const ctol = first.size * 1.0;
-    const starts = group.flatMap(l => l.parts.map(c => c.x)).sort((a, b) => a - b);
-    const clusters = [];
-    starts.forEach(x => { const c = clusters[clusters.length - 1]; if (c && x - c.max <= ctol) { c.max = x; c.n++; } else clusters.push({ min: x, max: x, n: 1 }); });
-    const cols = clusters.map(c => c.min);
+    // Bordes verticales dibujados en la página: delimitan las columnas con precisión
+    let cols = null, vEdges = null;
+    const topY = first.y + first.size * 1.6, botY = group[group.length - 1].y - first.size * 1.2;
+    const vr = rules.filter(r => r.v && r.y1 < topY && r.y2 > botY).map(r => r.x).sort((a, b) => a - b)
+      .filter((x, k, a) => !k || x - a[k - 1] > 2);
+    if (vr.length >= 3) {
+      const left = Math.min(...group.map(l => l.x)), right = Math.max(...group.map(l => l.xe || 0));
+      const edges = vr.filter(x => x > left - 10 && x < right + 10);
+      const after = vr.find(x => x >= right + 10); // el borde derecho puede pasar del último texto
+      if (after !== undefined) edges.push(after);
+      if (edges.length >= 3) { cols = edges.slice(0, -1).map(x => x + 1); vEdges = edges; }
+    }
+    if (!cols) {
+      const starts = group.flatMap(l => l.parts.map(c => c.x)).sort((a, b) => a - b);
+      const clusters = [];
+      starts.forEach(x => { const c = clusters[clusters.length - 1]; if (c && x - c.max <= ctol) { c.max = x; c.n++; } else clusters.push({ min: x, max: x, n: 1 }); });
+      cols = clusters.map(c => c.min);
+    }
     const avgLen = multi.reduce((a, l) => a + l.text.length, 0) / (multi.reduce((a, l) => a + l.cells.length, 0) || 1);
     if (multi.length < 2 || cols.length < 2 || (cols.length === 2 && avgLen > 60)) { out.push(first); i++; continue; }
     const rows = [];
@@ -677,7 +820,10 @@ function detectTables(lines) {
     // quitar columnas totalmente vacías
     const keep = cols.map((_, k) => rows.some(r => r[k].length));
     const kc = cols.filter((_, k) => keep[k]), right = Math.max(...group.map(l => l.xe || 0));
-    const widths = kc.map((x, k) => Math.max(1, (k + 1 < kc.length ? kc[k + 1] : right) - x));
+    const widths = kc.map((x, k) => {
+      if (vEdges) { const idx = cols.indexOf(x); if (idx >= 0 && idx + 1 < vEdges.length) return Math.max(1, vEdges[idx + 1] - vEdges[idx]); }
+      return Math.max(1, (k + 1 < kc.length ? kc[k + 1] : right) - x);
+    });
     out.push({ table: true, rows: rows.map(r => r.filter((_, k) => keep[k])), widths, y: first.y, yBot: group[group.length - 1].y, x1: kc[0], x2: right, size: first.size, text: '\u0000tbl' });
     i = j;
   }
@@ -692,6 +838,7 @@ function toMarkdown(pages) {
   const isFoot = (l, ls) => !l.image && !l.side && l.y < (ls.pageH || pageH) * 0.075 && l.y > 0;
   const footLines = (pages[0] || []).filter(l => isFoot(l, pages[0]));
   const rulesOf = pages.map(ls => ls.rules || []);
+  const linksOf = pages.map(ls => ls.links || []);
   pages = pages.map(ls => ls.filter(l => !isFoot(l, ls)));
   // Encabezados/pies repetidos
   if ($('optHF').checked && pages.length > 2) {
@@ -735,12 +882,12 @@ function toMarkdown(pages) {
   const main = all.filter(l => l.col === 0 && l.xe);
   const L0 = pct(main.map(l => l.x), 0.05), R0 = pct(main.map(l => l.xe), 0.95);
   const longL = main.filter(l => l.text.length > 50);
-  const rx = Math.max(R0, pct(main.map(l => l.xe), 0.99), ...rulesOf.flat().filter(r => r.h && r.x2 - r.x1 > (R0 - L0) * 0.6).map(r => r.x2));
+  const rx = Math.max(R0, pct(main.map(l => l.xe), 0.99), ...rulesOf.flat().filter(r => r.h && r.x2 - r.x1 > (R0 - L0) * 0.6).map(r => r.x2), ...pages.flat().filter(l => l.image && l.x2).map(l => l.x2));
   const justified = longL.length > 3 && longL.filter(l => l.xe >= R0 - 3).length / longL.length > 0.55;
 
   // Texto de una línea con su formato (negrita, cursiva, color, tamaño, fuente)
   const render = (l, skip = 0, noBold = false) => {
-    if (!l.segs) return l.text.slice(skip);
+    if (!l.segs) return htmlEsc(l.text.slice(skip));
     const chars = [];
     l.segs.forEach(s => { for (const ch of s.t) { const sp = /\s/.test(ch); if (sp && (!chars.length || chars[chars.length - 1].ch === ' ')) continue; chars.push({ ch: sp ? ' ' : ch, s }); } });
     while (chars.length && chars[chars.length - 1].ch === ' ') chars.pop();
@@ -753,18 +900,18 @@ function toMarkdown(pages) {
         if (Math.abs(s.s - bodyS) >= 0.75) css.push('font-size:' + s.s + 'pt');
         if (s.f && defFam && s.f !== defFam) css.push("font-family:'" + s.f + "'");
       }
-      return { b: s.b && !noBold, i: s.i, css: css.join(';') };
+      return { b: s.b && !noBold, i: s.i, v: s.v || '', css: css.join(';') };
     };
     const groups = [];
     cs.forEach(c => {
-      const st = style(c.s), k = st.b + '|' + st.i + '|' + st.css, g = groups[groups.length - 1];
+      const st = style(c.s), k = st.b + '|' + st.i + '|' + st.v + '|' + st.css, g = groups[groups.length - 1];
       if (g && (g.k === k || c.ch === ' ')) g.t += c.ch; else groups.push({ k, st, t: c.ch });
     });
     return groups.map(g => {
-      const m = g.t.match(/^(\s*)([\s\S]*?)(\s*)$/), core = m[2].replace(/\*/g, '\\*');
+      const m = g.t.match(/^(\s*)([\s\S]*?)(\s*)$/), core = htmlEsc(m[2]).replace(/\*/g, '\\*');
       if (!core) return g.t;
-      const { b, i, css } = g.st;
-      return m[1] + (css ? `<span style="${css}">` : '') + (b ? '**' : '') + (i ? '*' : '') + core + (i ? '*' : '') + (b ? '**' : '') + (css ? '</span>' : '') + m[3];
+      const { b, i, v, css } = g.st;
+      return m[1] + (css ? `<span style="${css}">` : '') + (v ? `<${v}>` : '') + (b ? '**' : '') + (i ? '*' : '') + core + (i ? '*' : '') + (b ? '**' : '') + (v ? `</${v}>` : '') + (css ? '</span>' : '') + m[3];
     }).join('');
   };
 
@@ -774,13 +921,15 @@ function toMarkdown(pages) {
   const ends = /[.:!?;»”)]$/;
   let para = null, prev = null;
   const extras = [], contR = [], hgaps = [];
-  const flush = () => { if (para) { blocks.push(para); para = null; } };
+  const flush = () => { if (para) { if (para.link && para.type === 'p' && !para.text.includes(para.link)) para.md = `[${para.md}](${para.link})`; blocks.push(para); para = null; } };
   const lineColor = l => { const c = {}; (l.segs || []).forEach(s => c[s.c] = (c[s.c] || 0) + s.t.length); return top(c, defCol); };
   const cellMd = parts => render({ text: parts.map(p => p.text).join(' ').replace(/\s+/g, ' ').trim(), segs: parts.map((p, i) => ({ t: (i ? ' ' : '') + p.text, ...p.seg })) });
   const start = (type, l, skip, extra = {}) => { flush(); para = { type, text: l.text.slice(skip), md: render(l, skip), x: l.x, tx: l.tx, center: l.center, ...extra }; };
 
   pages.forEach((rawLines, pi) => {
-    const lines = detectTables(rawLines);
+    const lines = detectTables(rawLines, rulesOf[pi] || []);
+    const pageLinks = linksOf[pi];
+    const linkOf = l => pageLinks.find(a => l.xe && a.x2 > l.x - 2 && a.x1 < l.xe + 2 && a.y1 < l.y + l.size && a.y2 > l.y - l.size * 0.35);
     const rules = rulesOf[pi].filter(r => r.y > pageH * 0.075);
     lines.forEach(t => {
       if (!t.table) return;
@@ -819,7 +968,7 @@ function toMarkdown(pages) {
         blocks.push({ type: 'img', page: l.page, id: l.id, align }); prev = null; continue;
       }
       if (l.rule) { flush(); blocks.push({ type: 'rule', color: l.color }); prev = null; continue; }
-      if (l.side) { flush(); blocks.push({ type: 'p', text: l.text, md: l.text }); prev = null; continue; }
+      if (l.side) { flush(); blocks.push({ type: 'p', text: l.text, md: htmlEsc(l.text) }); prev = null; continue; }
       if (l.table) { flush(); blocks.push({ type: 'table', rows: l.rows.map(r => r.map(cellMd)), widths: l.widths, border: l.border, x1: l.x1, x2: l.bx2 || l.x2 }); prev = null; continue; }
       l.pg = pi; l.center = centered(l);
       const r = l.size / body;
@@ -859,7 +1008,7 @@ function toMarkdown(pages) {
         else { para.text += ' ' + l.text; para.md += ' ' + t; }
         para.center = para.center && l.center;
       }
-      else start('p', l, 0);
+      else { const lk = linkOf(l); start('p', l, 0, lk ? { link: lk.url } : {}); }
       prev = l;
     }
   });
@@ -919,7 +1068,16 @@ function toMarkdown(pages) {
 // Las imágenes van en el Markdown como img:ID; para verlas o descargarlas se cambian por la imagen real
 const curDoc = () => docs.find(x => x.id === current);
 function withImages(md, d, placeholder = false) {
-  return md.replace(/!\[([^\]]*)\]\(img:([\w-]+)\)/g, (m, alt, id) => d && d.images && d.images[id] ? (placeholder ? `*[${alt}]*` : `![${alt}](${d.images[id].data})`) : m);
+  return md.replace(/!\[([^\]]*)\]\(img:([\w-]+)(?:\s+"[^"]*")?\)/g, (m, alt, id) => d && d.images && d.images[id] ? (placeholder ? `*[${alt}]*` : `![${alt}](${d.images[id].data})`) : m);
+}
+function safeHtml(html) {
+  const t = document.createElement('template'); t.innerHTML = html;
+  t.content.querySelectorAll('script,iframe,object,embed,style,link,meta,form,base').forEach(n => n.remove());
+  t.content.querySelectorAll('*').forEach(n => [...n.attributes].forEach(a => {
+    if (/^on/i.test(a.name) || (/^(href|src|xlink:href)$/i.test(a.name) && /^\s*(javascript|vbscript):/i.test(a.value))) n.removeAttribute(a.name);
+  }));
+  t.content.querySelectorAll('a[href]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+  return t.innerHTML;
 }
 function renderPreview() {
   const md = $('out').value, fmt = readFormat(md), pv = $('preview');
@@ -927,8 +1085,8 @@ function renderPreview() {
   pv.style.fontSize = fmt ? fmt.size + 'pt' : '';
   pv.style.color = fmt ? '#' + fmt.color : '';
   pv.style.textAlign = fmt && fmt.justify ? 'justify' : '';
-  pv.innerHTML = marked.parse(withImages(md, curDoc()))
-    .replace(/<(p|h[1-6])>(?:-&gt;|->)([\s\S]*?)(?:&lt;-|<-)<\/\1>/g, '<$1 style="text-align:center">$2</$1>');
+  pv.innerHTML = safeHtml(marked.parse(withImages(md, curDoc()))
+    .replace(/<(p|h[1-6])>(?:-&gt;|->)([\s\S]*?)(?:&lt;-|<-)<\/\1>/g, '<$1 style="text-align:center">$2</$1>'));
 }
 $('out').addEventListener('input', () => { const d = docs.find(x => x.id === current); if (d) d.md = $('out').value; clearTimeout(window._t); window._t = setTimeout(renderPreview, 300); });
 
@@ -953,7 +1111,7 @@ $('btnDown').onclick = () => {
 };
 
 // ===== Exportar a Word (.docx) desde el Markdown actual =====
-const xmlEsc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const xmlEsc = t => String(t).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 // ---------- Markdown → Word ----------
 function parseCss(s) {
   const o = {}; let m;
@@ -963,8 +1121,8 @@ function parseCss(s) {
   return o;
 }
 function runs(text, bold = false) {
-  const out = [], st = { b: false, i: false, code: false }, spans = [];
-  const re = /\\[\\*_#>|.\d-]|<span style="([^"]*)">|<\/span>|\*\*|\*|`/g;
+  const out = [], st = { b: false, i: false, code: false, va: null }, spans = [];
+  const re = /\\[\\*_#>|.\d-]|<span style="([^"]*)">|<\/span>|<\/?su[pb]>|\*\*|\*|`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
   let last = 0, m, buf = '';
   const emit = () => {
     if (!buf) return;
@@ -979,13 +1137,14 @@ function runs(text, bold = false) {
       if (sp.color || link) r += `<w:color w:val="${sp.color || '0563C1'}"/>`;
       if (sp.size) r += `<w:sz w:val="${sp.size}"/><w:szCs w:val="${sp.size}"/>`;
       if (link) r += '<w:u w:val="single"/>';
+      if (st.va) r += `<w:vertAlign w:val="${st.va}"/>`;
       return r ? '<w:rPr>' + r + '</w:rPr>' : '';
     };
     // las direcciones web se convierten en enlaces que se pueden pulsar
     t.split(/(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)])/).forEach((part, k) => {
       if (!part) return;
       const run = `<w:r>${mk(k % 2)}<w:t xml:space="preserve">${xmlEsc(part)}</w:t></w:r>`;
-      if (k % 2) { links.push(part); out.push(`<w:hyperlink r:id="rIdLink${links.length}">${run}</w:hyperlink>`); }
+      if (k % 2 && !noLinks) { links.push(part); out.push(`<w:hyperlink r:id="rIdLink${links.length}">${run}</w:hyperlink>`); }
       else out.push(run);
     });
   };
@@ -995,6 +1154,21 @@ function runs(text, bold = false) {
     if (tk[0] === '\\') { buf += tk.slice(1); continue; }
     if (st.code && tk !== '`') { buf += tk; continue; }
     if (tk === '`') { emit(); st.code = !st.code; }
+    else if (tk[0] === '[') { // [texto](https://…) → hipervínculo de Word
+      emit();
+      if (noLinks) { out.push(runs(m[2], bold)); continue; }
+      links.push(m[3]); noLinks = true;
+      let inner;
+      try { inner = runs(m[2], bold); } finally { noLinks = false; }
+      inner = inner
+        .replace(/<w:r><w:rPr>/g, '<w:r><w:rPr><w:rStyle w:val="Hyperlink"/>')
+        .replace(/<w:r>(?!<w:rPr>)/g, '<w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr>');
+      out.push(`<w:hyperlink r:id="rIdLink${links.length}">${inner}</w:hyperlink>`);
+    }
+    else if (tk === '<sup>') { emit(); st.va = 'superscript'; }
+    else if (tk === '</sup>') { emit(); st.va = null; }
+    else if (tk === '<sub>') { emit(); st.va = 'subscript'; }
+    else if (tk === '</sub>') { emit(); st.va = null; }
     else if (tk.startsWith('<span')) { emit(); spans.push(parseCss(m[1])); }
     else if (tk === '</span>') { emit(); spans.pop(); }
     else if (tk === '**') { if (st.b || text.indexOf('**', last) >= 0) { emit(); st.b = !st.b; } else buf += tk; }
@@ -1013,7 +1187,7 @@ function readFormat(md) {
   return { list: li[0] !== '' && li.length >= 2 ? { at: +li[0], text: +li[1], bold: li[2] === 'negrita' } : null, spaceH: f.espacio_titulo !== undefined ? +f.espacio_titulo : null, font: f.fuente || 'Calibri', size: +f['tamaño'] || 11, color: (f.color || '000000').toUpperCase(), line: +f.interlineado || 1.15, space: f.espacio !== undefined ? +f.espacio : 8,
     justify: f['alineación'] !== 'izquierda', pw: pw || 595, ph: ph || 842, ml: ml || 71, mr: mr || 71, mt: mt || 71, mb: mb || 71, foot: +f.pie || 35 };
 }
-let olStarts = [], media = [], links = [], footXml = '';
+let olStarts = [], media = [], links = [], footXml = '', noLinks = false;
 // «Página 1 de 3» en el pie → número de página automático de Word
 function pageFields(xml) {
   return xml.replace(/<w:r>(<w:rPr>(?:(?!<\/w:rPr>).)*<\/w:rPr>)?<w:t xml:space="preserve">([^<]*?)(P[áa]gina) \d+ de \d+([^<]*)<\/w:t><\/w:r>/g, (m, rp = '', pre, word, post) => {
@@ -1065,7 +1239,7 @@ function mdToDocXml(md, images = {}) {
     const l = raw.trim(); let m;
     if (/^<!--\s*pie\s*-->$/.test(l)) { flushTbl(); flush(); inFoot = true; continue; }
     if (/^<!--\s*\/pie\s*-->$/.test(l)) { inFoot = false; continue; }
-    if (inFoot) { if (l) foot.push(`<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="${Math.round(textW * 20)}"/></w:tabs><w:spacing w:after="0"/><w:jc w:val="left"/></w:pPr>${l.split('\t').map(runs).join('<w:r><w:tab/></w:r>')}</w:p>`); continue; }
+    if (inFoot) { if (l) { foot.push(`<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="${Math.round(textW * 20)}"/></w:tabs><w:spacing w:after="0"/><w:jc w:val="left"/></w:pPr>${(noLinks = true, l.split('\t').map(t => runs(t)).join('<w:r><w:tab/></w:r>'))}</w:p>`); noLinks = false; } continue; }
     if ((m = l.match(/^<!--\s*tabla:([\s\S]*?)-->$/))) {
       const b = (m[1].match(/bordes=([#\w]+)/) || [])[1], w = m[1].match(/anchos=([\d,]+)(pt)?/);
       tblOpt = { border: b === undefined ? undefined : b === 'no' ? '' : b.replace('#', '').toUpperCase(), widths: w ? w[1].split(',').map(Number) : null, pt: !!(w && w[2]) };
@@ -1112,7 +1286,7 @@ async function buildDocx(md, images = {}) {
   const ind = `<w:pPr><w:ind w:left="${Math.round(L.text * 20)}" w:hanging="${Math.round((L.text - L.at) * 20)}"/></w:pPr>${L.bold ? '<w:rPr><w:b/></w:rPr>' : ''}`;
   const font = fmt ? xmlEsc(fmt.font) : 'Calibri', size = fmt ? Math.round(fmt.size * 2) : 22;
   const line = fmt ? Math.round(240 * fmt.line) : 276, jc = !fmt || fmt.justify ? 'both' : 'left';
-  zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}"/>${fmt ? `<w:color w:val="${fmt.color}"/>` : ''}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/><w:lang w:val="es-ES"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="${fmt ? Math.round(fmt.space * 20) : 160}" w:line="${line}" w:lineRule="auto"/><w:jc w:val="${jc}"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${h('Heading1','heading 1',36,'1D4ED8')}${h('Heading2','heading 2',30,'1E3A8A')}${h('Heading3','heading 3',26,'334155')}<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="${fmt ? Math.round(fmt.space * 6) : 60}"/><w:ind w:left="${Math.round(L.text * 20)}"/></w:pPr></w:style></w:styles>`);
+  zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}"/>${fmt ? `<w:color w:val="${fmt.color}"/>` : ''}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/><w:lang w:val="es-ES"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="${fmt ? Math.round(fmt.space * 20) : 160}" w:line="${line}" w:lineRule="auto"/><w:jc w:val="${jc}"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${h('Heading1','heading 1',36,'1D4ED8')}${h('Heading2','heading 2',30,'1E3A8A')}${h('Heading3','heading 3',26,'334155')}<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="${fmt ? Math.round(fmt.space * 6) : 60}"/><w:ind w:left="${Math.round(L.text * 20)}"/></w:pPr></w:style><w:style w:type="character" w:styleId="Hyperlink"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr></w:style></w:styles>`);
   zip.file('word/numbering.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/>${ind}</w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="◦"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/>${ind}</w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2)"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>${olStarts.map((st, k) => `<w:num w:numId="${k + 3}"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="${st}"/></w:lvlOverride></w:num>`).join('')}</w:numbering>`);
   zip.file('word/document.xml', docXml);
   return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
@@ -1145,6 +1319,10 @@ async function zipAll(kind) {
 $('btnZipMd').onclick = () => zipAll('md');
 $('btnZipDocx').onclick = () => zipAll('docx');
 
+document.addEventListener('paste', e => {
+  const f = [...((e.clipboardData && e.clipboardData.files) || [])];
+  if (f.length) { e.preventDefault(); addFiles(f); }
+});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
 </body>
